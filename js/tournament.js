@@ -178,11 +178,7 @@ export class TournamentManager {
       bodyColor: c.bodyColor || c.primaryColor,
     }));
 
-    // Auto-start fresh 4K recording for this tournament if recording is enabled
-    if (this.isRecordingEnabled && this.game.recorder) {
-      const tournNum = this.completedTournaments + 1;
-      this.game.recorder.startRecording(tournNum);
-    }
+
 
     this.startStageIntro();
   }
@@ -347,10 +343,7 @@ export class TournamentManager {
         } else {
           this.isShowingPodiumCountdown = false;
           this.game.ui.showTournamentPodium(top4Results, false);
-          // When all tournaments finish, record 8 seconds of podium celebration then auto-save MP4
-          if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
-            this.finalPodiumSaveTimer = 8;
-          }
+
         }
       }, 1000);
     } else {
@@ -389,9 +382,6 @@ export class TournamentManager {
    */
   skipPodiumTimerAndStartNext() {
     this.isShowingPodiumCountdown = false;
-    if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
-      this.game.recorder.stopAndSave(this.completedTournaments);
-    }
     this.launchNewTournamentInstance();
   }
 
@@ -407,13 +397,6 @@ export class TournamentManager {
     this.isShowingPodiumCountdown = false;
     this.totalTournaments = 1;
     this.completedTournaments = 0;
-    if (this.game.recorder && this.game.recorder.isRecording) {
-      this.game.recorder.stopAndSave(this.completedTournaments + 1);
-    }
-    if (this.game.recorder) {
-      this.game.recorder.stopAllStreams();
-    }
-    this.isRecordingEnabled = false;
     this.game.bombs.setTournamentMode(false);
     this.game.items.setTournamentMode(false);
     this.game.ui.hideTournamentIntro();
@@ -470,24 +453,9 @@ export class TournamentManager {
       }
       if (this.podiumSecondsLeft <= 0) {
         this.isShowingPodiumCountdown = false;
-        if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
-          this.game.recorder.stopAndSave(this.completedTournaments);
-        }
         this.launchNewTournamentInstance();
       }
       return;
-    }
-
-    // 4. Final tournament podium celebration auto-save timer
-    if (this.finalPodiumSaveTimer !== undefined && this.finalPodiumSaveTimer > 0) {
-      this.finalPodiumSaveTimer -= dt;
-      if (this.finalPodiumSaveTimer <= 0) {
-        this.finalPodiumSaveTimer = 0;
-        if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
-          this.game.recorder.stopAndSave(this.completedTournaments);
-          this.game.recorder.stopAllStreams();
-        }
-      }
     }
 
     if (!this.isStageBattleActive || this.stageCleared || this.game.state !== 'BATTLE') {

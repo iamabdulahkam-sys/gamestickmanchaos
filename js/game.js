@@ -16,7 +16,6 @@ import { ItemManager } from './items.js';
 import { BombManager } from './bomb.js';
 import { sound } from './audio.js';
 import { TournamentManager } from './tournament.js';
-import { GameRecorder } from './recorder.js';
 import { BackgroundTicker } from './ticker.js';
 
 export class GameManager {
@@ -52,7 +51,6 @@ export class GameManager {
     this.renderer = new Renderer(canvas);
     this.ui = new UIManager(this);
     this.tournament = new TournamentManager(this);
-    this.recorder = new GameRecorder(this);
     this.ticker = new BackgroundTicker((dt) => this.onBackgroundTick(dt));
 
     if (typeof document !== 'undefined') {
@@ -563,7 +561,6 @@ export class GameManager {
     this.effects.update(dt);
     this.renderer.update(dt);
     this.weather.update(dt, this.physics, this.fighters, this.effects, isBattleOver);
-    if (this.recorder) this.recorder.update(dt);
 
     // Tournament mode lifecycle updates (intros, countdowns, transitions, nature shifts)
     if (this.tournament && this.tournament.isActive) {

@@ -43,12 +43,7 @@ export class UIManager {
     this.tournamentSetupModal = document.getElementById('tournament-setup-modal');
 
 
-    // 4K Screen Recorder elements
-    this.recIndicator = document.getElementById('rec-indicator');
-    this.recTime = document.getElementById('rec-time');
-    this.recordCheckbox = document.getElementById('tournament-record-checkbox');
-    this.recordFolderName = document.getElementById('record-folder-name');
-    this.btnSelectSaveFolder = document.getElementById('btn-select-save-folder');
+
 
     this.fighterCards = [];
     this.announcerTimer = null;
@@ -169,28 +164,6 @@ export class UIManager {
       });
     }
 
-    // Recording in 4K preferences and folder picker
-    const savedRecordPref = typeof localStorage !== 'undefined' && localStorage.getItem('stickman_record_tournament') === 'true';
-    if (this.recordCheckbox) {
-      this.recordCheckbox.checked = savedRecordPref;
-      this.recordCheckbox.addEventListener('change', () => {
-        if (typeof localStorage !== 'undefined') {
-          localStorage.setItem('stickman_record_tournament', this.recordCheckbox.checked ? 'true' : 'false');
-        }
-      });
-    }
-
-    if (this.btnSelectSaveFolder) {
-      this.btnSelectSaveFolder.addEventListener('click', async () => {
-        if (this.game.recorder) {
-          const folderName = await this.game.recorder.chooseSaveDirectory();
-          if (this.recordFolderName) {
-            this.recordFolderName.textContent = folderName;
-          }
-        }
-      });
-    }
-
     const btnStartSeries = document.getElementById('btn-start-tournament-series');
     if (btnStartSeries) {
       btnStartSeries.addEventListener('click', () => {
@@ -200,11 +173,6 @@ export class UIManager {
           count = 'infinite';
         } else if (countInput) {
           count = Math.max(1, parseInt(countInput.value, 10) || 1);
-        }
-
-        const shouldRecord = this.recordCheckbox ? this.recordCheckbox.checked : false;
-        if (this.game.tournament) {
-          this.game.tournament.isRecordingEnabled = shouldRecord;
         }
 
         this.hideTournamentSetupModal();
