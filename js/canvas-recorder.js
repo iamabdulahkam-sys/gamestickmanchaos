@@ -21,6 +21,7 @@ export class CanvasRecorder {
 
     // Recording Configuration
     this.config = {
+      format: 'mp4', // 'mp4' (H.264/AVC1, VLC smooth) or 'webm' (VP9/VP8)
       resolutionKey: '4k', // '4k', '1440p', '1080p', 'native'
       fps: 60,
       videoBitsPerSecond: 40_000_000, // 40 Mbps default for crisp 4K UHD
@@ -72,7 +73,7 @@ export class CanvasRecorder {
   checkBrowserSupport() {
     const hasCaptureStream = !!(this.canvas && (this.canvas.captureStream || this.canvas.mozCaptureStream));
     const hasMediaRecorder = typeof window !== 'undefined' && typeof window.MediaRecorder !== 'undefined';
-    const supportedMime = this.getBestSupportedMimeType();
+    const supportedMime = this.getBestSupportedMimeType(this.config?.format || 'mp4');
 
     return {
       supported: hasCaptureStream && hasMediaRecorder && !!supportedMime,
@@ -85,17 +86,32 @@ export class CanvasRecorder {
   /**
    * Detects the best video codec supported by the browser
    */
-  getBestSupportedMimeType() {
+  getBestSupportedMimeType(preferredFormat = this.config?.format || 'mp4') {
     if (typeof MediaRecorder === 'undefined') return '';
-    const candidates = [
-      'video/webm;codecs=vp9,opus',
-      'video/webm;codecs=vp9',
-      'video/webm;codecs=vp8,opus',
-      'video/webm;codecs=vp8',
-      'video/webm',
-      'video/mp4;codecs=avc1,mp4a.40.2',
-      'video/mp4',
-    ];
+
+    let candidates = [];
+    if (preferredFormat === 'mp4') {
+      candidates = [
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4;codecs=avc1,opus',
+        'video/mp4;codecs=avc1',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+      ];
+    } else {
+      candidates = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4;codecs=avc1',
+        'video/mp4',
+      ];
+    }
+
     for (const mime of candidates) {
       try {
         if (MediaRecorder.isTypeSupported(mime)) {
@@ -154,6 +170,7 @@ export class CanvasRecorder {
     }
 
     // Apply runtime options
+    if (options.format) this.config.format = options.format;
     if (options.resolutionKey) this.config.resolutionKey = options.resolutionKey;
     if (options.videoBitsPerSecond) this.config.videoBitsPerSecond = options.videoBitsPerSecond;
     if (options.fps) this.config.fps = options.fps;
@@ -187,7 +204,7 @@ export class CanvasRecorder {
 
       this.combinedStream = new MediaStream(tracks);
       this.recordedChunks = [];
-      this.activeMimeType = support.mimeType;
+      this.activeMimeType = this.getBestSupportedMimeType(this.config.format) || support.mimeType;
 
       // 4. Initialize MediaRecorder
       const recorderOptions = {
@@ -295,7 +312,7 @@ export class CanvasRecorder {
   /**
    * Compiles Blob, creates Object URL, downloads file, and frees memory
    */
-  finishAndDownload() {
+  async finishAndDownload() {
     this.stopTimer();
 
     // Stop streams
@@ -317,12 +334,22 @@ export class CanvasRecorder {
     }
 
     try {
-      const mime = this.activeMimeType || 'video/webm';
-      const blob = new Blob(this.recordedChunks, { type: mime });
+      const mime = this.activeMimeType || (this.config.format === 'mp4' ? 'video/mp4' : 'video/webm');
+      let blob = new Blob(this.recordedChunks, { type: mime });
+
+      // If WebM format, patch duration and cues so it's seekable in VLC and other players
+      if (mime.includes('webm') && this.elapsedTimeMs > 0) {
+        try {
+          blob = await this.patchWebmDuration(blob, this.elapsedTimeMs);
+        } catch (patchErr) {
+          console.warn('[CanvasRecorder] WebM duration patch skipped:', patchErr);
+        }
+      }
+
       const sizeMb = (blob.size / (1024 * 1024)).toFixed(2);
       console.log(`[CanvasRecorder] Video compilation finished: ${sizeMb} MB, ${this.recordedChunks.length} chunks.`);
 
-      // Generate filename: game-recording-YYYY-MM-DD-HH-mm-ss.webm
+      // Generate filename: game-recording-YYYY-MM-DD-HH-mm-ss.mp4 / .webm
       const now = new Date();
       const YYYY = now.getFullYear();
       const MM = String(now.getMonth() + 1).padStart(2, '0');
@@ -363,6 +390,48 @@ export class CanvasRecorder {
       }, 2500);
       this.updateUIWidget();
     }
+  }
+
+  /**
+   * Injects exact duration into WebM EBML header to ensure seekability in VLC
+   */
+  async patchWebmDuration(blob, durationMs) {
+    if (!durationMs || durationMs <= 0) return blob;
+    try {
+      const buffer = await blob.arrayBuffer();
+      const view = new DataView(buffer);
+      const u8 = new Uint8Array(buffer);
+
+      // Search for EBML Info tag: 0x15, 0x49, 0xA9, 0x66
+      let infoPos = -1;
+      for (let i = 0; i < Math.min(u8.length - 4, 2048); i++) {
+        if (u8[i] === 0x15 && u8[i + 1] === 0x49 && u8[i + 2] === 0xa9 && u8[i + 3] === 0x66) {
+          infoPos = i;
+          break;
+        }
+      }
+
+      if (infoPos !== -1) {
+        // Search for Duration tag: 0x44, 0x89 within Info element
+        for (let i = infoPos; i < Math.min(u8.length - 6, infoPos + 300); i++) {
+          if (u8[i] === 0x44 && u8[i + 1] === 0x89) {
+            const len = u8[i + 2];
+            if (len === 0x84) {
+              // 4-byte float32
+              view.setFloat32(i + 3, durationMs, false);
+              return new Blob([buffer], { type: blob.type });
+            } else if (len === 0x88) {
+              // 8-byte float64
+              view.setFloat64(i + 3, durationMs, false);
+              return new Blob([buffer], { type: blob.type });
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[CanvasRecorder] WebM duration patching error:', err);
+    }
+    return blob;
   }
 
   /**
@@ -464,6 +533,14 @@ export class CanvasRecorder {
 
         <div class="cr-settings">
           <div class="cr-setting-row">
+            <label for="cr-format-select">Format:</label>
+            <select id="cr-format-select" class="cr-select">
+              <option value="mp4" selected>MP4 (H.264) - VLC Smooth</option>
+              <option value="webm">WebM (VP9) - Web</option>
+            </select>
+          </div>
+
+          <div class="cr-setting-row">
             <label for="cr-res-select">Resolution:</label>
             <select id="cr-res-select" class="cr-select">
               <option value="4k" selected>4K UHD (3840×2160)</option>
@@ -531,6 +608,7 @@ export class CanvasRecorder {
     const pauseBtn = widget.querySelector('#cr-btn-pause');
     const resumeBtn = widget.querySelector('#cr-btn-resume');
     const stopBtn = widget.querySelector('#cr-btn-stop');
+    const formatSelect = widget.querySelector('#cr-format-select');
     const resSelect = widget.querySelector('#cr-res-select');
     const bitrateSelect = widget.querySelector('#cr-bitrate-select');
     const audioCheck = widget.querySelector('#cr-audio-check');
@@ -548,6 +626,12 @@ export class CanvasRecorder {
     pauseBtn.addEventListener('click', () => this.pause());
     resumeBtn.addEventListener('click', () => this.resume());
     stopBtn.addEventListener('click', () => this.stop());
+
+    if (formatSelect) {
+      formatSelect.addEventListener('change', (e) => {
+        this.config.format = e.target.value;
+      });
+    }
 
     resSelect.addEventListener('change', (e) => {
       this.config.resolutionKey = e.target.value;
