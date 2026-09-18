@@ -824,8 +824,8 @@ export class GameManager {
     this.crowdShockwaveCooldown = 1.8;
   }
 
-  startTournament(count = 1, customCountries = null) {
-    this.tournament.startTournament(count, customCountries);
+  startTournament(count = 1, customCountries = null, recordOptions = null) {
+    this.tournament.startTournament(count, customCountries, recordOptions);
   }
 
   exitTournament() {

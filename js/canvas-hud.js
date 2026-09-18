@@ -8,6 +8,7 @@
  */
 
 import { Flags } from './flags.js';
+import { CONFIG } from './config.js';
 
 export class CanvasHUD {
   constructor(renderer) {
@@ -16,6 +17,10 @@ export class CanvasHUD {
     this.showStandings = true; // Enabled for recordings and live view
     this.pulseTime = 0;
     this.lastGameContext = null;
+    this.flagImages = new Map();
+    this.interactiveButtons = [];
+
+    this.initFlagImages();
 
     if (this.renderer?.canvas) {
       this.renderer.canvas.addEventListener('click', (e) => {
@@ -35,9 +40,29 @@ export class CanvasHUD {
   }
 
   /**
-   * Handles interactive clicks on canvas HUD elements (e.g. Champion card buttons)
+   * Handles interactive clicks on canvas HUD elements (e.g. Champion card, intro, stage cleared buttons)
    */
   handleClick(canvasX, canvasY, game) {
+    if (!game) return false;
+
+    // Check dynamic interactive canvas buttons first
+    if (this.interactiveButtons && this.interactiveButtons.length > 0) {
+      for (let i = this.interactiveButtons.length - 1; i >= 0; i--) {
+        const btn = this.interactiveButtons[i];
+        if (
+          canvasX >= btn.x &&
+          canvasX <= btn.x + btn.w &&
+          canvasY >= btn.y &&
+          canvasY <= btn.y + btn.h
+        ) {
+          if (typeof btn.onClick === 'function') {
+            btn.onClick();
+            return true;
+          }
+        }
+      }
+    }
+
     const isGameOver = game.state === 'RESULT' || game.winnerDeclared || Boolean(game.winner);
     if (!isGameOver) return false;
 
@@ -90,8 +115,23 @@ export class CanvasHUD {
 
     ctx.save();
 
-    // 1. Draw In-Game Tournament Phase Banner (Top Center)
+    // 1. Tournament Overlays (Intro Showcase, Stage Cleared, Podium, or In-Game Banner)
     if (game.tournament && game.tournament.isActive) {
+      if (game.tournament.isShowingIntro) {
+        this.drawTournamentIntro(ctx, width, height, game.tournament);
+        ctx.restore();
+        return;
+      }
+      if (game.tournament.isShowingStageCleared) {
+        this.drawTournamentStageCleared(ctx, width, height, game.tournament);
+        ctx.restore();
+        return;
+      }
+      if (game.tournament.isShowingPodiumCountdown || (game.tournament.stageCleared && game.tournament.podiumResults)) {
+        this.drawTournamentPodium(ctx, width, height, game.tournament);
+        ctx.restore();
+        return;
+      }
       this.drawTournamentBanner(ctx, width, height, game.tournament);
     }
 
@@ -109,12 +149,10 @@ export class CanvasHUD {
       this.drawStandings(ctx, width, height, game);
     }
 
-    // 4. Draw Champion Victory Card (Right Side outside Arena when match/tournament concludes)
+    // 4. Draw Champion Victory Card (Right Side outside Arena when match concludes)
     const isGameOver = game.state === 'RESULT' || game.winnerDeclared || Boolean(game.winner);
-    const isPodium = Boolean(game.tournament?.isActive && game.tournament?.podiumResults);
-
-    if (isGameOver || isPodium) {
-      const champion = game.winner || (game.tournament?.podiumResults ? game.tournament.podiumResults[0] : null);
+    if (isGameOver) {
+      const champion = game.winner;
       if (champion) {
         this.drawChampionCard(ctx, width, height, champion, game);
       }
@@ -593,5 +631,712 @@ export class CanvasHUD {
     ctx.lineTo(x, y + r);
     ctx.quadraticCurveTo(x, y, x + r, y);
     ctx.closePath();
+  }
+
+  /**
+   * Pre-renders / caches vector SVG flags as HTMLImageElements for fast, 60 FPS rectangular canvas drawing
+   */
+  initFlagImages() {
+    if (typeof Flags !== 'undefined' && typeof Flags.getFlagSvg === 'function' && typeof CONFIG !== 'undefined' && Array.isArray(CONFIG.COUNTRIES)) {
+      for (const country of CONFIG.COUNTRIES) {
+        try {
+          const svg = Flags.getFlagSvg(country.id);
+          const blob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const img = new Image();
+          img.src = url;
+          this.flagImages.set(country.id, img);
+        } catch (e) {
+          // Will safely fallback to Flags.drawFlagHead
+        }
+      }
+    }
+  }
+
+  /**
+   * Draws a rectangular country flag with rounded corners and border.
+   * Uses cached SVG image if available, otherwise falls back to vector circular flag head.
+   */
+  drawFlag(ctx, country, x, y, w, h, radius = 2.5) {
+    if (!country) return;
+    const img = this.flagImages.get(country.id);
+    if (img && img.complete && img.naturalWidth !== 0) {
+      ctx.save();
+      this.roundRect(ctx, x, y, w, h, radius);
+      ctx.clip();
+      ctx.drawImage(img, x, y, w, h);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.lineWidth = 1;
+      this.roundRect(ctx, x, y, w, h, radius);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      Flags.drawFlagHead(ctx, country, x + w / 2, y + h / 2, Math.min(w, h) / 2);
+    }
+  }
+
+  /**
+   * Truncates text with ellipsis if it exceeds maxWidth in the current canvas context
+   */
+  truncateText(ctx, text, maxWidth) {
+    if (!text) return '';
+    if (ctx.measureText(text).width <= maxWidth) return text;
+    let truncated = text;
+    while (truncated.length > 1 && ctx.measureText(truncated + '…').width > maxWidth) {
+      truncated = truncated.slice(0, -1);
+    }
+    return truncated + '…';
+  }
+
+  // ==========================================================================
+  // 5. TOURNAMENT INTRO SHOWCASE (ROUND TITLE, CONDITIONS, & PARTICIPANTS GRID)
+  // ==========================================================================
+  drawTournamentIntro(ctx, width, height, tournament) {
+    this.interactiveButtons = [];
+    const cardW = 1060;
+    const cardH = 650;
+    const cardX = (width - cardW) / 2;
+    const cardY = (height - cardH) / 2;
+
+    ctx.save();
+
+    // 1. Semi-transparent dark card background
+    ctx.fillStyle = 'rgba(12, 16, 28, 0.96)';
+    ctx.beginPath();
+    this.roundRect(ctx, cardX, cardY, cardW, cardH, 18);
+    ctx.fill();
+
+    // 2. Glowing Gold Border
+    ctx.shadowColor = 'rgba(255, 215, 0, 0.4)';
+    ctx.shadowBlur = 22;
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 3. Header Row
+    const stage = (tournament.stages && tournament.stages[tournament.currentStageIndex]) || {
+      name: 'Round of 32',
+      desc: '32 Countries Battling • Top 16 Advance to Round of 16!',
+    };
+
+    // Trophy Box on left
+    const boxX = cardX + 24;
+    const boxY = cardY + 18;
+    const boxSize = 44;
+    ctx.fillStyle = 'rgba(255, 215, 0, 0.15)';
+    ctx.beginPath();
+    this.roundRect(ctx, boxX, boxY, boxSize, boxSize, 10);
+    ctx.fill();
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    this.drawTrophyIcon(ctx, boxX + boxSize / 2, boxY + boxSize / 2, 16);
+
+    // Title & Subtitle
+    ctx.font = '900 24px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#FFE600';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText((stage.name || 'STAGE').toUpperCase(), boxX + boxSize + 14, cardY + 31);
+
+    ctx.font = '600 12.5px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#A0AEC0';
+    ctx.fillText(stage.desc || 'Countries Clashing for Championship!', boxX + boxSize + 14, cardY + 51);
+
+    // Exit (X) Button on top-right
+    const exitW = 30;
+    const exitH = 30;
+    const exitX = cardX + cardW - 24 - exitW;
+    const exitY = cardY + 22;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    this.roundRect(ctx, exitX, exitY, exitW, exitH, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = '#A0AEC0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(exitX + 8, exitY + 8);
+    ctx.lineTo(exitX + exitW - 8, exitY + exitH - 8);
+    ctx.moveTo(exitX + exitW - 8, exitY + 8);
+    ctx.lineTo(exitX + 8, exitY + exitH - 8);
+    ctx.stroke();
+
+    this.interactiveButtons.push({
+      x: exitX,
+      y: exitY,
+      w: exitW,
+      h: exitH,
+      onClick: () => tournament.exitTournament(),
+    });
+
+    // 4. 10-Second Countdown Strip
+    const stripX = cardX + 24;
+    const stripY = cardY + 74;
+    const stripW = cardW - 48;
+    const stripH = 56;
+
+    const stripGrad = ctx.createLinearGradient(stripX, stripY, stripX + stripW, stripY + stripH);
+    stripGrad.addColorStop(0, 'rgba(255, 215, 0, 0.12)');
+    stripGrad.addColorStop(1, 'rgba(0, 240, 255, 0.08)');
+    ctx.fillStyle = stripGrad;
+    ctx.beginPath();
+    this.roundRect(ctx, stripX, stripY, stripW, stripH, 14);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 215, 0, 0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Circular Timer Badge
+    const timerCx = stripX + 34;
+    const timerCy = stripY + stripH / 2;
+    const timerR = 21;
+
+    ctx.fillStyle = 'rgba(10, 12, 22, 0.85)';
+    ctx.beginPath();
+    ctx.arc(timerCx, timerCy, timerR, 0, Math.PI * 2);
+    ctx.fill();
+
+    const pulse = 0.4 + Math.sin(this.pulseTime * 5) * 0.25;
+    ctx.shadowColor = `rgba(255, 215, 0, ${pulse})`;
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    const secLeft = Math.max(0, Math.ceil(tournament.introSecondsLeft || 0));
+    ctx.font = '900 18px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#FFE600';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(secLeft, timerCx, timerCy - 3);
+
+    ctx.font = '800 7px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#A0AEC0';
+    ctx.fillText('SEC', timerCx, timerCy + 10);
+
+    // Text next to timer
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 14px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('Participating Countries Showcase', timerCx + timerR + 14, timerCy - 8);
+
+    ctx.font = '11px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#A0AEC0';
+    ctx.fillText('Battle will start automatically when timer reaches zero...', timerCx + timerR + 14, timerCy + 10);
+
+    // START BATTLE NOW Button
+    const btnW = 184;
+    const btnH = 38;
+    const btnX = stripX + stripW - btnW - 10;
+    const btnY = stripY + (stripH - btnH) / 2;
+
+    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
+    btnGrad.addColorStop(0, '#00FF87');
+    btnGrad.addColorStop(1, '#60EFFF');
+    ctx.fillStyle = btnGrad;
+    ctx.beginPath();
+    this.roundRect(ctx, btnX, btnY, btnW, btnH, 10);
+    ctx.fill();
+
+    ctx.font = '900 12.5px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#0C1220';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('START BATTLE NOW', btnX + (btnW - 14) / 2, btnY + btnH / 2);
+
+    // Play triangle icon
+    const triX = btnX + btnW - 20;
+    const triY = btnY + btnH / 2;
+    ctx.beginPath();
+    ctx.moveTo(triX - 6, triY - 6);
+    ctx.lineTo(triX + 4, triY);
+    ctx.lineTo(triX - 6, triY + 6);
+    ctx.closePath();
+    ctx.fill();
+
+    this.interactiveButtons.push({
+      x: btnX,
+      y: btnY,
+      w: btnW,
+      h: btnH,
+      onClick: () => tournament.skipIntro(),
+    });
+
+    // 5. Stage Arena & Weather Conditions Box
+    const condX = cardX + 24;
+    const condY = cardY + 140;
+    const condW = cardW - 48;
+    const condH = 58;
+
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.7)';
+    ctx.beginPath();
+    this.roundRect(ctx, condX, condY, condW, condH, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = 'bold 10px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#FFE600';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('STAGE ARENA & WEATHER CONDITIONS (RANDOMIZED):', condX + 14, condY + 9);
+
+    // Badges Row
+    const cond = tournament.stageConditions || {};
+    const condPills = [
+      { label: 'Ring:', val: cond.arenaShapeName || 'Octagon Ring' },
+      { label: 'Theme:', val: cond.themeName || 'Cyber Neon' },
+      { label: 'Obstacle:', val: cond.obstacleName || 'None' },
+      { label: 'Gravity:', val: cond.gravityName || 'Normal' },
+      { label: 'Weather:', val: cond.weatherName || 'Clear Sky' },
+      { label: 'Wind:', val: cond.windName || 'GENTLE' },
+    ];
+
+    let pillX = condX + 12;
+    const pillY = condY + 26;
+    const pillH = 22;
+
+    for (const cp of condPills) {
+      ctx.font = '600 9.5px "Segoe UI", sans-serif';
+      const labelW = ctx.measureText(cp.label).width;
+      ctx.font = 'bold 9.5px "Segoe UI", sans-serif';
+      const valW = ctx.measureText(cp.val).width;
+      const pillW = labelW + valW + 16;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
+      ctx.beginPath();
+      this.roundRect(ctx, pillX, pillY, pillW, pillH, 6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.font = '600 9.5px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#8B95B2';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cp.label, pillX + 6, pillY + pillH / 2);
+
+      ctx.font = 'bold 9.5px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#00F0FF';
+      ctx.fillText(cp.val, pillX + 6 + labelW + 4, pillY + pillH / 2);
+
+      pillX += pillW + 8;
+    }
+
+    // 6. Participating Countries Grid
+    const countries = tournament.currentPool || [];
+    ctx.font = '900 12.5px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`PARTICIPATING COUNTRIES (${countries.length}):`, cardX + 24, cardY + 210);
+
+    const gridX = cardX + 24;
+    const gridY = cardY + 230;
+    const gridW = cardW - 48;
+    const gridH = cardH - 245;
+
+    const count = countries.length;
+    let cols = 4;
+    if (count > 32) cols = 6;
+    else if (count <= 8) cols = 4;
+
+    const rows = Math.ceil(count / cols);
+    const gapX = cols === 6 ? 8 : 10;
+    const gapY = cols === 6 ? 5 : 6;
+    const colW = (gridW - (cols - 1) * gapX) / cols;
+    const maxRowH = (gridH - (rows - 1) * gapY) / rows;
+    const rowH = Math.min(cols === 6 ? 26 : 32, maxRowH);
+
+    for (let i = 0; i < count; i++) {
+      const c = countries[i];
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const px = gridX + col * (colW + gapX);
+      const py = gridY + row * (rowH + gapY);
+
+      // Card background
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.beginPath();
+      this.roundRect(ctx, px, py, colW, rowH, 6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Flag
+      const flagW = Math.round(rowH * 0.72 * 1.4);
+      const flagH = Math.round(flagW / 1.45);
+      const fx = px + 6;
+      const fy = py + (rowH - flagH) / 2;
+      this.drawFlag(ctx, c, fx, fy, flagW, flagH, 2.5);
+
+      // Name
+      const nameX = fx + flagW + 8;
+      const maxNameW = colW - (flagW + 28);
+      ctx.font = `bold ${cols === 6 ? '10px' : '11.5px'} "Segoe UI", sans-serif`;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const nameStr = this.truncateText(ctx, c.name || 'Country', maxNameW);
+      ctx.fillText(nameStr, nameX, py + rowH / 2);
+
+      // Status Dot
+      const dotCx = px + colW - 10;
+      const dotCy = py + rowH / 2;
+      ctx.fillStyle = c.bodyColor || c.primaryColor || '#00FF87';
+      ctx.beginPath();
+      ctx.arc(dotCx, dotCy, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // ==========================================================================
+  // 6. TOURNAMENT STAGE CLEARED (QUALIFIERS VS ELIMINATED RESULTS)
+  // ==========================================================================
+  drawTournamentStageCleared(ctx, width, height, tournament) {
+    this.interactiveButtons = [];
+    const cardW = 980;
+    const cardH = 580;
+    const cardX = (width - cardW) / 2;
+    const cardY = (height - cardH) / 2;
+
+    ctx.save();
+
+    // 1. Semi-transparent dark card background
+    ctx.fillStyle = 'rgba(14, 20, 36, 0.96)';
+    ctx.beginPath();
+    this.roundRect(ctx, cardX, cardY, cardW, cardH, 18);
+    ctx.fill();
+
+    // 2. Glowing Green Border
+    ctx.shadowColor = 'rgba(0, 255, 135, 0.35)';
+    ctx.shadowBlur = 22;
+    ctx.strokeStyle = '#00FF87';
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 3. Header Row
+    const stage = (tournament.stages && tournament.stages[tournament.currentStageIndex]) || { name: 'Round' };
+    const nextStage = tournament.stages && tournament.stages[tournament.currentStageIndex + 1];
+    const qualifiers = tournament.stageQualifiers || [];
+    const eliminated = tournament.stageEliminated || [];
+
+    // Checkmark Box on left
+    const boxX = cardX + 24;
+    const boxY = cardY + 20;
+    const boxSize = 44;
+    ctx.fillStyle = 'rgba(0, 255, 135, 0.15)';
+    ctx.beginPath();
+    this.roundRect(ctx, boxX, boxY, boxSize, boxSize, 10);
+    ctx.fill();
+    ctx.strokeStyle = '#00FF87';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Checkmark SVG vector
+    ctx.strokeStyle = '#00FF87';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(boxX + 12, boxY + 22);
+    ctx.lineTo(boxX + 20, boxY + 30);
+    ctx.lineTo(boxX + 32, boxY + 14);
+    ctx.stroke();
+
+    // Title & Subtitle
+    ctx.font = '900 24px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#00FF87';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${(stage.name || 'STAGE').toUpperCase()} COMPLETE!`, boxX + boxSize + 14, cardY + 32);
+
+    ctx.font = '600 13px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#A0AEC0';
+    const nextName = nextStage ? nextStage.name : 'Grand Finals';
+    ctx.fillText(`${qualifiers.length} Countries Qualified for ${nextName}!`, boxX + boxSize + 14, cardY + 54);
+
+    // 4. Two Columns: Qualifiers vs Eliminated
+    const colPad = 24;
+    const midGap = 16;
+    const colW = (cardW - colPad * 2 - midGap) / 2;
+    const colH = cardH - 160;
+    const topY = cardY + 80;
+
+    // Left Column: Qualifiers
+    const qColX = cardX + colPad;
+    ctx.fillStyle = 'rgba(10, 14, 24, 0.6)';
+    ctx.beginPath();
+    this.roundRect(ctx, qColX, topY, colW, colH, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 255, 135, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = 'bold 12px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#00FF87';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('✓  QUALIFIED FOR NEXT ROUND', qColX + 14, topY + 12);
+
+    // Right Column: Eliminated
+    const eColX = qColX + colW + midGap;
+    ctx.fillStyle = 'rgba(10, 14, 24, 0.6)';
+    ctx.beginPath();
+    this.roundRect(ctx, eColX, topY, colW, colH, 12);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 46, 147, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = '#FF2E93';
+    ctx.fillText('✕  ELIMINATED', eColX + 14, topY + 12);
+
+    // Render Qualifiers Grid inside Left Column
+    const qGridY = topY + 36;
+    const qGridH = colH - 46;
+    const qCols = qualifiers.length > 16 ? 3 : 2;
+    const qRows = Math.ceil(qualifiers.length / qCols);
+    const qItemW = (colW - 24 - (qCols - 1) * 8) / qCols;
+    const qItemH = Math.min(28, (qGridH - (qRows - 1) * 6) / Math.max(1, qRows));
+
+    for (let i = 0; i < qualifiers.length; i++) {
+      const c = qualifiers[i];
+      const col = i % qCols;
+      const row = Math.floor(i / qCols);
+      const ix = qColX + 12 + col * (qItemW + 8);
+      const iy = qGridY + row * (qItemH + 6);
+
+      ctx.fillStyle = 'rgba(0, 255, 135, 0.08)';
+      ctx.beginPath();
+      this.roundRect(ctx, ix, iy, qItemW, qItemH, 6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0, 255, 135, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const fW = Math.round(qItemH * 0.7 * 1.4);
+      const fH = Math.round(fW / 1.45);
+      this.drawFlag(ctx, c, ix + 5, iy + (qItemH - fH) / 2, fW, fH, 2);
+
+      ctx.font = 'bold 10.5px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const maxW = qItemW - fW - 14;
+      ctx.fillText(this.truncateText(ctx, c.name, maxW), ix + fW + 9, iy + qItemH / 2);
+    }
+
+    // Render Eliminated Grid inside Right Column
+    const eGridY = topY + 36;
+    const eGridH = colH - 46;
+    const eCols = eliminated.length > 16 ? 3 : 2;
+    const eRows = Math.ceil(eliminated.length / eCols);
+    const eItemW = (colW - 24 - (eCols - 1) * 8) / eCols;
+    const eItemH = Math.min(28, (eGridH - (eRows - 1) * 6) / Math.max(1, eRows));
+
+    for (let i = 0; i < eliminated.length; i++) {
+      const c = eliminated[i];
+      const col = i % eCols;
+      const row = Math.floor(i / eCols);
+      const ix = eColX + 12 + col * (eItemW + 8);
+      const iy = eGridY + row * (eItemH + 6);
+
+      ctx.fillStyle = 'rgba(255, 46, 147, 0.05)';
+      ctx.beginPath();
+      this.roundRect(ctx, ix, iy, eItemW, eItemH, 6);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 46, 147, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      const fW = Math.round(eItemH * 0.7 * 1.4);
+      const fH = Math.round(fW / 1.45);
+      this.drawFlag(ctx, c, ix + 5, iy + (eItemH - fH) / 2, fW, fH, 2);
+
+      ctx.font = '600 10px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#8B95B2';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const maxW = eItemW - fW - 14;
+      ctx.fillText(this.truncateText(ctx, c.name, maxW), ix + fW + 9, iy + eItemH / 2);
+    }
+
+    // 5. Bottom Bar
+    const bBarY = cardY + cardH - 58;
+    const secLeft = Math.max(0, Math.ceil(tournament.transitionSecondsLeft || 0));
+
+    ctx.font = 'bold 13px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#00F0FF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`Advancing to ${nextName} in ${secLeft} seconds...`, cardX + 24, bBarY + 18);
+
+    const btnW = 210;
+    const btnH = 38;
+    const btnX = cardX + cardW - 24 - btnW;
+    const btnY = bBarY;
+
+    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
+    btnGrad.addColorStop(0, '#00FF87');
+    btnGrad.addColorStop(1, '#60EFFF');
+    ctx.fillStyle = btnGrad;
+    ctx.beginPath();
+    this.roundRect(ctx, btnX, btnY, btnW, btnH, 10);
+    ctx.fill();
+
+    ctx.font = '900 12.5px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#0C1220';
+    ctx.textAlign = 'center';
+    ctx.fillText('ADVANCE TO NEXT ROUND', btnX + btnW / 2, btnY + btnH / 2);
+
+    this.interactiveButtons.push({
+      x: btnX,
+      y: btnY,
+      w: btnW,
+      h: btnH,
+      onClick: () => tournament.advanceToNextStage(),
+    });
+
+    ctx.restore();
+  }
+
+  // ==========================================================================
+  // 7. TOURNAMENT GRAND FINALE PODIUM (CHAMPION RECOGNITION)
+  // ==========================================================================
+  drawTournamentPodium(ctx, width, height, tournament) {
+    this.interactiveButtons = [];
+    const cardW = 680;
+    const cardH = 500;
+    const cardX = (width - cardW) / 2;
+    const cardY = (height - cardH) / 2;
+
+    ctx.save();
+
+    // 1. Radial Card Background
+    ctx.fillStyle = 'rgba(14, 18, 32, 0.98)';
+    ctx.beginPath();
+    this.roundRect(ctx, cardX, cardY, cardW, cardH, 20);
+    ctx.fill();
+
+    // 2. Glowing Gold Border
+    const glow = 0.5 + Math.sin(this.pulseTime * 4) * 0.25;
+    ctx.shadowColor = `rgba(255, 215, 0, ${glow})`;
+    ctx.shadowBlur = 26;
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // 3. Floating Trophy Halo
+    const trophyCx = cardX + cardW / 2;
+    const trophyY = cardY + 45;
+    this.drawTrophyIcon(ctx, trophyCx, trophyY, 32);
+
+    // 4. Title
+    ctx.font = '900 24px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#FFD700';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('TOURNAMENT CHAMPION!', trophyCx, cardY + 95);
+
+    // 5. Winner Flag & Name
+    const results = tournament.podiumResults || [];
+    const champion = results[0] || null;
+
+    if (champion) {
+      const country = champion.country || champion;
+      const flagW = 90;
+      const flagH = 60;
+      const fx = trophyCx - flagW / 2;
+      const fy = cardY + 140;
+
+      this.drawFlag(ctx, country, fx, fy, flagW, flagH, 6);
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 2.5;
+      this.roundRect(ctx, fx, fy, flagW, flagH, 6);
+      ctx.stroke();
+
+      const champName = (country.name || 'CHAMPION').toUpperCase();
+      ctx.font = '900 28px Impact, "Arial Black", sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillText(champName, trophyCx, cardY + 215);
+
+      // Crown badge
+      const badgeText = 'TOURNAMENT CHAMPION';
+      ctx.font = '900 13px Impact, sans-serif';
+      const bW = ctx.measureText(badgeText).width + 32;
+      const bH = 28;
+      const bX = trophyCx - bW / 2;
+      const bY = cardY + 260;
+
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+      ctx.beginPath();
+      this.roundRect(ctx, bX, bY, bW, bH, 14);
+      ctx.fill();
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.fillStyle = '#FFD700';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(badgeText, trophyCx, bY + bH / 2);
+
+      // Congratulatory subtext
+      ctx.font = '600 13px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#CBD5E1';
+      ctx.fillText('Congratulations! Conquered all obstacles and defeated 64 competing nations!', trophyCx, cardY + 315);
+    }
+
+    // 6. Action Button
+    const btnW = 200;
+    const btnH = 42;
+    const btnX = trophyCx - btnW / 2;
+    const btnY = cardY + cardH - 70;
+
+    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
+    btnGrad.addColorStop(0, '#00FF87');
+    btnGrad.addColorStop(1, '#60EFFF');
+    ctx.fillStyle = btnGrad;
+    ctx.beginPath();
+    this.roundRect(ctx, btnX, btnY, btnW, btnH, 12);
+    ctx.fill();
+
+    ctx.font = '900 14px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#0C1220';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('PLAY AGAIN', trophyCx, btnY + btnH / 2);
+
+    this.interactiveButtons.push({
+      x: btnX,
+      y: btnY,
+      w: btnW,
+      h: btnH,
+      onClick: () => {
+        if (tournament.isShowingPodiumCountdown && tournament.completedTournaments < tournament.totalTournaments) {
+          tournament.skipPodiumTimerAndStartNext();
+        } else {
+          tournament.exitTournament();
+        }
+      },
+    });
+
+    ctx.restore();
   }
 }

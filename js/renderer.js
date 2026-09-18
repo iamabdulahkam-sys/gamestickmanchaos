@@ -61,12 +61,12 @@ export class Renderer {
     const scale = this.renderScale || 1.0;
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
 
-    // Apply screen shake
+    // 1. Draw Background Environment (Themes) - 100% Static and solid, prevents edge lines or gaps when arena shakes
+    this.drawBackground(ctx, width, height);
+
+    // Apply screen shake exclusively for arena, obstacles, impacts, fighters, and effects
     ctx.save();
     ctx.translate(effects.screenShakeOffset.x, effects.screenShakeOffset.y);
-
-    // 1. Draw Background Environment (Themes)
-    this.drawBackground(ctx, width, height);
 
     // 2. Draw Octagon Arena (Floor & Walls)
     this.drawArena(ctx, physics);

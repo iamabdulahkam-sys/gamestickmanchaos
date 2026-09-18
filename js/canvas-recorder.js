@@ -40,6 +40,10 @@ export class CanvasRecorder {
     this.timerInterval = null;
     this.previousResolution = 'auto';
     this.activeMimeType = '';
+    this.isElectronFfmpeg = false;
+    this.lastSavedFile = null;
+    this.lastSavedName = null;
+    this.lastSavedSize = null;
 
     // Create and attach floating UI controller
     this.widgetEl = null;
@@ -177,6 +181,25 @@ export class CanvasRecorder {
     if (typeof options.includeAudio === 'boolean') this.config.includeAudio = options.includeAudio;
 
     try {
+      // 0. Electron FFmpeg Native GPU Recorder Integration
+      this.isElectronFfmpeg = !!(typeof window !== 'undefined' && window.desktopApp?.isElectron && window.desktopApp?.startFfmpegRecording);
+      if (this.isElectronFfmpeg) {
+        const startRes = await window.desktopApp.startFfmpegRecording({
+          resolutionKey: this.config.resolutionKey,
+          fps: this.config.fps,
+          videoBitsPerSecond: this.config.videoBitsPerSecond,
+          includeAudio: this.config.includeAudio,
+        });
+        if (!startRes.success) {
+          throw new Error(`FFmpeg GPU recorder failed to start: ${startRes.error}`);
+        }
+        console.log(`[CanvasRecorder] Desktop FFmpeg recorder active (${startRes.encoder}). Target: ${startRes.filePath}`);
+      }
+
+      // Hide previous saved notification if visible
+      const prevSavedBox = this.widgetEl?.querySelector('#cr-saved-box');
+      if (prevSavedBox) prevSavedBox.classList.add('hidden');
+
       // 1. Prepare 4K Canvas Resolution
       this.prepareCanvasResolution();
 
@@ -204,7 +227,8 @@ export class CanvasRecorder {
 
       this.combinedStream = new MediaStream(tracks);
       this.recordedChunks = [];
-      this.activeMimeType = this.getBestSupportedMimeType(this.config.format) || support.mimeType;
+      const formatToUse = this.isElectronFfmpeg ? 'webm' : this.config.format;
+      this.activeMimeType = this.getBestSupportedMimeType(formatToUse) || support.mimeType;
 
       // 4. Initialize MediaRecorder
       const recorderOptions = {
@@ -221,7 +245,14 @@ export class CanvasRecorder {
 
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
-          this.recordedChunks.push(event.data);
+          if (this.isElectronFfmpeg && window.desktopApp?.sendVideoChunk) {
+            // Stream chunk direct to FFmpeg stdin on disk - zero RAM buildup
+            event.data.arrayBuffer().then((buffer) => {
+              window.desktopApp.sendVideoChunk(buffer);
+            });
+          } else {
+            this.recordedChunks.push(event.data);
+          }
         }
       };
 
@@ -234,8 +265,9 @@ export class CanvasRecorder {
         this.finishAndDownload();
       };
 
-      // 5. Start streaming chunks
-      this.mediaRecorder.start(this.config.timesliceMs);
+      // 5. Start streaming chunks (250ms chunks in Electron for ultra-low latency direct-to-disk streaming)
+      const timeslice = this.isElectronFfmpeg ? 250 : this.config.timesliceMs;
+      this.mediaRecorder.start(timeslice);
       this.state = 'RECORDING';
       this.startTime = Date.now();
       this.elapsedTimeMs = 0;
@@ -315,14 +347,32 @@ export class CanvasRecorder {
   async finishAndDownload() {
     this.stopTimer();
 
-    // Stop streams
+    // Stop streams (only video track needs stopping; game audio track must stay alive for subsequent recordings)
     if (this.combinedStream) {
-      this.combinedStream.getTracks().forEach((track) => track.stop());
+      this.combinedStream.getVideoTracks().forEach((track) => track.stop());
       this.combinedStream = null;
     }
     if (this.videoStream) {
       this.videoStream.getTracks().forEach((track) => track.stop());
       this.videoStream = null;
+    }
+
+    // Direct-to-Disk Electron FFmpeg Recording Completion
+    if (this.isElectronFfmpeg && window.desktopApp?.stopFfmpegRecording) {
+      try {
+        const result = await window.desktopApp.stopFfmpegRecording();
+        this.lastSavedFile = result.filePath;
+        this.lastSavedName = result.fileName;
+        this.lastSavedSize = result.sizeMb;
+        this.state = 'COMPLETED';
+        this.restoreCanvasResolution();
+        this.updateUIWidget();
+        console.log(`[CanvasRecorder] Desktop 4K NVENC video saved: ${result.filePath} (${result.sizeMb} MB)`);
+      } catch (err) {
+        console.error('[CanvasRecorder] Error finalizing FFmpeg recording:', err);
+        this.handleError(err.message);
+      }
+      return;
     }
 
     if (!this.recordedChunks || this.recordedChunks.length === 0) {
@@ -592,6 +642,12 @@ export class CanvasRecorder {
           </button>
         </div>
 
+        <div id="cr-saved-box" class="cr-saved-box hidden" style="margin: 8px 0; padding: 8px; background: rgba(0, 255, 135, 0.12); border: 1px solid #00ff87; border-radius: 6px; font-size: 11px;">
+          <div style="color: #00ff87; font-weight: bold; margin-bottom: 3px;">✅ VIDEO SAVED DIRECT TO DISK</div>
+          <div id="cr-saved-name" style="color: #eee; font-family: monospace; word-break: break-all; margin-bottom: 6px;"></div>
+          <button id="cr-btn-open-folder" style="width: 100%; padding: 5px; background: #00ff87; color: #0c0e17; font-weight: bold; border: none; border-radius: 4px; cursor: pointer;">📁 Open Recording Folder</button>
+        </div>
+
         <div class="cr-footer">
           <span>Native Canvas Stream (60 FPS) • Hotkey: <b>F9</b></span>
         </div>
@@ -652,6 +708,15 @@ export class CanvasRecorder {
         }
       });
     }
+
+    const openFolderBtn = widget.querySelector('#cr-btn-open-folder');
+    if (openFolderBtn) {
+      openFolderBtn.addEventListener('click', () => {
+        if (window.desktopApp?.openVideoFolder) {
+          window.desktopApp.openVideoFolder(this.lastSavedFile);
+        }
+      });
+    }
   }
 
   updateTimerDisplay() {
@@ -699,13 +764,30 @@ export class CanvasRecorder {
 
     switch (this.state) {
       case 'IDLE':
-      case 'COMPLETED':
         badge?.classList.add('cr-badge-idle');
         startBtn.classList.remove('hidden');
         pill?.classList.remove('recording', 'paused');
         pillTime?.classList.add('hidden');
         if (resSelect) resSelect.disabled = false;
         if (bitrateSelect) bitrateSelect.disabled = false;
+        break;
+
+      case 'COMPLETED':
+        badge?.classList.add('cr-badge-idle');
+        if (badge) badge.textContent = 'SAVED';
+        startBtn.classList.remove('hidden');
+        pill?.classList.remove('recording', 'paused');
+        pillTime?.classList.add('hidden');
+        if (resSelect) resSelect.disabled = false;
+        if (bitrateSelect) bitrateSelect.disabled = false;
+        if (this.lastSavedName) {
+          const savedBox = this.widgetEl.querySelector('#cr-saved-box');
+          const savedName = this.widgetEl.querySelector('#cr-saved-name');
+          if (savedBox && savedName) {
+            savedName.textContent = `${this.lastSavedName} (${this.lastSavedSize} MB)`;
+            savedBox.classList.remove('hidden');
+          }
+        }
         break;
 
       case 'RECORDING':

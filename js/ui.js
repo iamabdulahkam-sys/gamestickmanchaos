@@ -134,7 +134,7 @@ export class UIManager {
       btnSetupCancel.addEventListener('click', () => this.hideTournamentSetupModal());
     }
 
-    const presetBtns = document.querySelectorAll('.t-preset-btn');
+    const presetBtns = document.querySelectorAll('.t-preset-group .t-preset-btn');
     const countInput = document.getElementById('tournament-count-input');
     presetBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -164,10 +164,35 @@ export class UIManager {
       });
     }
 
+    // Tournament Recording Controls & Options (Default: 4K, 60 Mbps, MP4)
+    const recordToggle = document.getElementById('tournament-record-toggle');
+    const recordOptionsContainer = document.getElementById('tournament-record-options');
+    if (recordToggle && recordOptionsContainer) {
+      recordToggle.addEventListener('change', () => {
+        recordOptionsContainer.style.display = recordToggle.checked ? 'flex' : 'none';
+      });
+    }
+
+    const setupRecordButtonGroup = (groupId) => {
+      const group = document.getElementById(groupId);
+      if (!group) return;
+      const btns = group.querySelectorAll('.t-record-opt-btn');
+      btns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          btns.forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
+    };
+
+    setupRecordButtonGroup('t-record-res-group');
+    setupRecordButtonGroup('t-record-bitrate-group');
+    setupRecordButtonGroup('t-record-format-group');
+
     const btnStartSeries = document.getElementById('btn-start-tournament-series');
     if (btnStartSeries) {
       btnStartSeries.addEventListener('click', () => {
-        const activePreset = document.querySelector('.t-preset-btn.active');
+        const activePreset = document.querySelector('.t-preset-group .t-preset-btn.active');
         let count = 1;
         if (activePreset && activePreset.dataset.count === 'infinite') {
           count = 'infinite';
@@ -175,8 +200,24 @@ export class UIManager {
           count = Math.max(1, parseInt(countInput.value, 10) || 1);
         }
 
+        let recordOptions = null;
+        if (recordToggle && recordToggle.checked) {
+          const activeRes = document.querySelector('#t-record-res-group .t-record-opt-btn.active');
+          const activeBitrate = document.querySelector('#t-record-bitrate-group .t-record-opt-btn.active');
+          const activeFormat = document.querySelector('#t-record-format-group .t-record-opt-btn.active');
+
+          recordOptions = {
+            enabled: true,
+            resolutionKey: activeRes ? activeRes.dataset.res : '4k',
+            videoBitsPerSecond: activeBitrate ? parseInt(activeBitrate.dataset.bitrate, 10) : 60_000_000,
+            format: activeFormat ? activeFormat.dataset.format : 'mp4',
+            fps: 60,
+            includeAudio: true,
+          };
+        }
+
         this.hideTournamentSetupModal();
-        this.game.startTournament(count);
+        this.game.startTournament(count, null, recordOptions);
       });
     }
 
@@ -1478,8 +1519,26 @@ export class UIManager {
         <p class="winner-stats-pill">
           Congratulations! Conquered all obstacles and defeated 64 competing nations!
         </p>
+        <div style="margin-top: 14px;">
+          <button id="btn-podium-action" class="action-btn" style="padding: 10px 24px; font-size: 0.95rem; display: inline-flex; align-items: center; gap: 8px;">
+            <span>${hasNextTournament ? 'NEXT TOURNAMENT' : 'CLOSE & RETURN TO MENU'}</span>
+          </button>
+        </div>
       </div>
     `;
+
+    const btnPodiumAction = document.getElementById('btn-podium-action');
+    if (btnPodiumAction) {
+      btnPodiumAction.onclick = () => {
+        if (this.game.tournament) {
+          if (hasNextTournament) {
+            this.game.tournament.skipPodiumTimerAndStartNext();
+          } else {
+            this.game.tournament.exitTournament();
+          }
+        }
+      };
+    }
 
     if (this.tournamentPodiumModal) {
       this.tournamentPodiumModal.classList.add('active');

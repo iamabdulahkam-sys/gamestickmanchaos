@@ -37,6 +37,9 @@ export class TournamentManager {
     this.podiumTransitionTimer = null;
     this.podiumSecondsLeft = 30;
     this.isRecordingEnabled = false;
+    this.autoRecordActive = false;
+    this.recordOptions = null;
+    this.finalPodiumTimer = null;
 
     this.stages = [
       {
@@ -122,8 +125,9 @@ export class TournamentManager {
    * Starts Tournament Mode with specified tournament count (e.g. 1, 5, or 'infinite')
    * @param {number|string} count Number of tournaments in this sequence
    * @param {Array} customCountries Optional custom countries list
+   * @param {Object} recordOptions Optional recording options { enabled, resolutionKey, videoBitsPerSecond, format, fps }
    */
-  startTournament(count = 1, customCountries = null) {
+  startTournament(count = 1, customCountries = null, recordOptions = null) {
     this.isActive = true;
     if (count === 'infinite' || count === Infinity) {
       this.totalTournaments = Infinity;
@@ -131,6 +135,22 @@ export class TournamentManager {
       this.totalTournaments = Math.max(1, parseInt(count, 10) || 1);
     }
     this.completedTournaments = 0;
+    this.recordOptions = recordOptions;
+    this.isRecordingEnabled = !!(recordOptions && recordOptions.enabled);
+
+    // Auto-start 4K 60FPS recording direct to disk if selected
+    if (this.isRecordingEnabled) {
+      if (window.canvasRecorder && typeof window.canvasRecorder.start === 'function') {
+        window.canvasRecorder.start({
+          resolutionKey: recordOptions.resolutionKey || '4k',
+          videoBitsPerSecond: recordOptions.videoBitsPerSecond || 60_000_000,
+          format: recordOptions.format || 'mp4',
+          fps: recordOptions.fps || 60,
+          includeAudio: recordOptions.includeAudio !== false,
+        });
+        this.autoRecordActive = true;
+      }
+    }
 
     this.launchNewTournamentInstance(customCountries);
   }
@@ -141,6 +161,10 @@ export class TournamentManager {
    * and generates fresh randomized conditions.
    */
   launchNewTournamentInstance(customCountries = null) {
+    if (this.finalPodiumTimer) {
+      clearTimeout(this.finalPodiumTimer);
+      this.finalPodiumTimer = null;
+    }
     if (this.podiumTransitionTimer) {
       clearInterval(this.podiumTransitionTimer);
       this.podiumTransitionTimer = null;
@@ -157,6 +181,7 @@ export class TournamentManager {
     this.game.ui.hideTournamentPodium();
     this.isStageBattleActive = false;
     this.stageCleared = false;
+    this.podiumResults = null;
     this.currentStageIndex = 0;
 
     // Pick a fresh set of 64 countries independently
@@ -333,6 +358,7 @@ export class TournamentManager {
       this.completedTournaments++;
 
       const top4Results = standings.slice(0, 4);
+      this.podiumResults = top4Results;
       const hasNextTournament = this.completedTournaments < this.totalTournaments;
 
       setTimeout(() => {
@@ -344,6 +370,16 @@ export class TournamentManager {
           this.isShowingPodiumCountdown = false;
           this.game.ui.showTournamentPodium(top4Results, false);
 
+          // If auto recording was enabled for this series, finalize recording after celebration
+          if (this.autoRecordActive) {
+            this.finalPodiumTimer = setTimeout(() => {
+              if (this.autoRecordActive && window.canvasRecorder && (window.canvasRecorder.state === 'RECORDING' || window.canvasRecorder.state === 'PAUSED')) {
+                console.log('[Tournament] Series completed. Auto-finalizing tournament recording.');
+                window.canvasRecorder.stop();
+                this.autoRecordActive = false;
+              }
+            }, 30000);
+          }
         }
       }, 1000);
     } else {
@@ -389,12 +425,25 @@ export class TournamentManager {
    * Exits Tournament Mode back to normal match
    */
   exitTournament() {
+    if (this.finalPodiumTimer) {
+      clearTimeout(this.finalPodiumTimer);
+      this.finalPodiumTimer = null;
+    }
+    if (this.autoRecordActive) {
+      if (window.canvasRecorder && (window.canvasRecorder.state === 'RECORDING' || window.canvasRecorder.state === 'PAUSED')) {
+        console.log('[Tournament] Exiting tournament mode. Stopping recording.');
+        window.canvasRecorder.stop();
+      }
+      this.autoRecordActive = false;
+    }
+
     this.isActive = false;
     this.isStageBattleActive = false;
     this.stageCleared = false;
     this.isShowingIntro = false;
     this.isShowingStageCleared = false;
     this.isShowingPodiumCountdown = false;
+    this.podiumResults = null;
     this.totalTournaments = 1;
     this.completedTournaments = 0;
     this.game.bombs.setTournamentMode(false);

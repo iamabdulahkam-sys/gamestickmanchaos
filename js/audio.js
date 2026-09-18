@@ -85,12 +85,16 @@ class SoundManager {
   }
 
   /**
-   * Retrieves Web Audio MediaStream for screen recording synchronization
+   * Retrieves Web Audio MediaStream for screen recording synchronization.
+   * Automatically refreshes destination node if previous track was ended.
    */
   getAudioStream() {
     this.ensureActive();
-    if (!this.mediaStreamDest && this.ctx && this.ctx.createMediaStreamDestination) {
-      this.mediaStreamDest = this.ctx.createMediaStreamDestination();
+    const existingTrack = this.mediaStreamDest?.stream?.getAudioTracks()[0];
+    if (!this.mediaStreamDest || !existingTrack || existingTrack.readyState === 'ended') {
+      if (this.ctx && this.ctx.createMediaStreamDestination) {
+        this.mediaStreamDest = this.ctx.createMediaStreamDestination();
+      }
     }
     return this.mediaStreamDest ? this.mediaStreamDest.stream : null;
   }
