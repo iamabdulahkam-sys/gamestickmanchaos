@@ -7,6 +7,7 @@ import { CONFIG } from './config.js';
 import { GameManager } from './game.js';
 import { sound } from './audio.js';
 import { FLAGS } from './flags.js';
+import { CanvasRecorder } from './canvas-recorder.js';
 
 window.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game-canvas');
@@ -56,6 +57,9 @@ window.addEventListener('DOMContentLoaded', () => {
   window.FLAGS = FLAGS;
   window.Flags = FLAGS;
   game.init();
+
+  // Initialize isolated Native Canvas 4K Recorder
+  window.canvasRecorder = new CanvasRecorder(game, canvas);
 
   // First interaction audio unlock
   const unlockAudio = () => {
