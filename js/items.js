@@ -9,18 +9,29 @@ import { sound } from './audio.js';
 export class ItemManager {
   constructor() {
     this.items = [];
+    this.projectiles = [];
     this.spawnTimer = 3.5; // First item spawns quickly!
     this.idCounter = 1;
+    this.isTournamentMode = false;
+  }
+
+  setTournamentMode(isTournament) {
+    this.isTournamentMode = isTournament;
+    if (isTournament) {
+      this.spawnTimer = Math.min(this.spawnTimer, 1.8);
+    }
   }
 
   update(dt, physics, fighters, effects) {
     // 1. Check Spawning
-    if (this.items.length < CONFIG.ITEMS.MAX_ITEMS) {
+    const maxItems = this.isTournamentMode ? 6 : CONFIG.ITEMS.MAX_ITEMS;
+    const minInterval = this.isTournamentMode ? 1.8 : CONFIG.ITEMS.SPAWN_INTERVAL_MIN;
+    const maxInterval = this.isTournamentMode ? 4.2 : CONFIG.ITEMS.SPAWN_INTERVAL_MAX;
+
+    if (this.items.length < maxItems) {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
-        this.spawnTimer =
-          CONFIG.ITEMS.SPAWN_INTERVAL_MIN +
-          Math.random() * (CONFIG.ITEMS.SPAWN_INTERVAL_MAX - CONFIG.ITEMS.SPAWN_INTERVAL_MIN);
+        this.spawnTimer = minInterval + Math.random() * (maxInterval - minInterval);
         this.spawnRandomItem(physics);
       }
     }
@@ -81,6 +92,168 @@ export class ItemManager {
           this.items.splice(i, 1);
           break;
         }
+      }
+    }
+
+    // 3. Update active projectiles (Laser beams & Flying rockets)
+    for (let p = this.projectiles.length - 1; p >= 0; p--) {
+      const proj = this.projectiles[p];
+      if (proj.type === 'laser') {
+        proj.life -= dt;
+        if (proj.life <= 0) {
+          this.projectiles.splice(p, 1);
+        }
+      } else if (proj.type === 'missile') {
+        proj.life -= dt;
+        proj.x += proj.vx * dt * 60;
+        proj.y += proj.vy * dt * 60;
+        proj.vy += 0.045 * dt * 60; // slight cartoon gravity curve
+        proj.smokeTimer -= dt;
+        if (proj.smokeTimer <= 0) {
+          proj.smokeTimer = 0.035;
+          if (effects) {
+            effects.addLandDust(proj.x - proj.facing * 14, proj.y);
+          }
+        }
+
+        // Check boundary collision with arena
+        let detonate = false;
+        const distFromCenter = Math.hypot(proj.x - physics.center.x, proj.y - physics.center.y);
+        if (distFromCenter >= physics.radius * 0.94 || proj.life <= 0) {
+          detonate = true;
+        }
+
+        // Check direct hit with any other fighter
+        if (!detonate) {
+          for (let j = 0; j < fighters.length; j++) {
+            const f = fighters[j];
+            if (f === proj.shooter || f.isKO || !f.body) continue;
+            const fDist = Math.hypot(f.body.position.x - proj.x, f.body.position.y - proj.y);
+            if (fDist < Math.max(16, 22 * (f.scale || 1.0))) {
+              detonate = true;
+              break;
+            }
+          }
+        }
+
+        if (detonate) {
+          this.detonateMissile(proj, physics, fighters, effects);
+          this.projectiles.splice(p, 1);
+        }
+      }
+    }
+  }
+
+  spawnLaser(fighter, physics, fighters, effects) {
+    sound.playLaser();
+    const fScale = fighter.scale || 1.0;
+    const startX = fighter.body.position.x + fighter.facing * (16 * fScale);
+    const startY = fighter.body.position.y - 4 * fScale;
+
+    // Laser beam travels horizontally across the arena
+    const beamLength = physics.radius * 1.6;
+    const endX = startX + fighter.facing * beamLength;
+    const endY = startY;
+
+    // Piercing raycast: hits all enemies along the beam line
+    const laserDmg = (fighter.equippedItem?.bonusDamage || 18) + Math.floor(Math.random() * 5);
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+
+    for (let i = 0; i < fighters.length; i++) {
+      const other = fighters[i];
+      if (other === fighter || other.isKO || !other.body) continue;
+      const op = other.body.position;
+      const oScale = other.scale || 1.0;
+
+      if (op.x >= minX - 12 && op.x <= maxX + 12 && Math.abs(op.y - startY) < 26 * oScale) {
+        const kbForce = (fighter.equippedItem?.knockbackMult || 1.85) * CONFIG.FIGHTER.PUNCH_KNOCKBACK * 1.35;
+        if (effects) {
+          effects.addHitEffect(op.x, op.y, 'ZAP!', true, oScale);
+          effects.addShockwave(op.x, op.y, '#00F0FF', 55);
+        }
+        other.takeDamage(laserDmg, { x: fighter.facing * kbForce, y: -kbForce * 0.4 }, fighter, effects);
+      }
+    }
+
+    this.projectiles.push({
+      type: 'laser',
+      startX,
+      startY,
+      endX,
+      endY,
+      life: 0.22,
+      maxLife: 0.22,
+      color: '#00F0FF',
+    });
+
+    if (effects) {
+      effects.addShockwave(startX, startY, '#00F0FF', 35);
+      effects.triggerScreenShake(4.5);
+      effects.addHitEffect(startX + fighter.facing * 30, startY - 10, 'PEW PEW!', true, fScale);
+    }
+  }
+
+  spawnMissile(fighter, physics, effects) {
+    sound.playRocket();
+    const fScale = fighter.scale || 1.0;
+    const startX = fighter.body.position.x + fighter.facing * (18 * fScale);
+    const startY = fighter.body.position.y - 4 * fScale;
+    const speed = 9.2;
+    const vx = fighter.facing * speed;
+    const vy = -0.7 + (Math.random() - 0.5) * 0.4;
+
+    this.projectiles.push({
+      type: 'missile',
+      x: startX,
+      y: startY,
+      vx,
+      vy,
+      facing: fighter.facing,
+      shooter: fighter,
+      life: 3.5,
+      blastRadius: 95,
+      smokeTimer: 0,
+      damage: 28,
+    });
+
+    if (effects) {
+      effects.addShockwave(startX, startY, '#FF3B00', 30);
+      effects.addLandDust(startX, startY);
+    }
+  }
+
+  detonateMissile(proj, physics, fighters, effects) {
+    const { x, y, blastRadius, damage, shooter } = proj;
+    sound.playKaboom();
+    if (effects) {
+      effects.addHitEffect(x, y - 12, 'KABOOM!', true, 1.25);
+      effects.addShockwave(x, y, '#FF3B00', blastRadius * 1.25);
+      effects.triggerScreenShake(11);
+      effects.addLandDust(x, y + 6);
+    }
+
+    for (let i = 0; i < fighters.length; i++) {
+      const f = fighters[i];
+      if (!f.body || f.isKO) continue;
+      const fPos = f.body.position;
+      const dx = fPos.x - x;
+      const dy = fPos.y - y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist < blastRadius) {
+        const falloff = 1 - dist / blastRadius;
+        const finalDamage = Math.max(8, Math.round(damage * falloff));
+        const normX = dist > 1 ? dx / dist : (Math.random() > 0.5 ? 1 : -1);
+        const normY = dist > 1 ? dy / dist : -0.6;
+        const kbForce = CONFIG.FIGHTER.PUNCH_KNOCKBACK * 2.2 * falloff;
+
+        f.takeDamage(
+          finalDamage,
+          { x: normX * kbForce, y: Math.min(-3.5, normY * kbForce) },
+          shooter,
+          effects
+        );
       }
     }
   }
@@ -299,14 +472,174 @@ export class ItemManager {
         ctx.fill();
         ctx.stroke();
         ctx.restore();
+      } else if (item.type === 'laser') {
+        // Cyber Laser Blaster Pickup
+        ctx.save();
+        ctx.fillStyle = '#0F172A';
+        ctx.strokeStyle = '#00F0FF';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.roundRect(-8, -5, 17, 9, 3);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#00F0FF';
+        ctx.shadowColor = '#00F0FF';
+        ctx.shadowBlur = 8;
+        ctx.fillRect(-2, -3, 7, 5);
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#1E293B';
+        ctx.strokeStyle = '#0C0E17';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.roundRect(-6, 3, 6, 8, 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#00F0FF';
+        ctx.fillRect(9, -4, 3, 7);
+        ctx.restore();
+      } else if (item.type === 'missile') {
+        // Cartoon Rocket Missile Pickup
+        ctx.save();
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = '#FF3B00';
+        ctx.strokeStyle = '#0C0E17';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.roundRect(-7, -10, 14, 20, [0, 0, 4, 4]);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#FFE600';
+        ctx.beginPath();
+        ctx.moveTo(-7, -10);
+        ctx.lineTo(0, -20);
+        ctx.lineTo(7, -10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#1E293B';
+        ctx.beginPath();
+        ctx.moveTo(-7, 4);
+        ctx.lineTo(-13, 11);
+        ctx.lineTo(-7, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(7, 4);
+        ctx.lineTo(13, 11);
+        ctx.lineTo(7, 10);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#FFE600';
+        ctx.fillRect(-3, 10, 6, 3);
+        ctx.restore();
       }
 
       ctx.restore();
+    }
+
+    // 5. Draw active projectiles (Laser beams & Flying rockets)
+    for (let i = 0; i < this.projectiles.length; i++) {
+      const p = this.projectiles[i];
+      if (p.type === 'laser') {
+        ctx.save();
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = alpha;
+        // Outer glow
+        ctx.shadowColor = '#00F0FF';
+        ctx.shadowBlur = 18;
+        ctx.strokeStyle = 'rgba(0, 240, 255, 0.85)';
+        ctx.lineWidth = 8;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(p.startX, p.startY);
+        ctx.lineTo(p.endX, p.endY);
+        ctx.stroke();
+
+        // Bright core
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 3.2;
+        ctx.beginPath();
+        ctx.moveTo(p.startX, p.startY);
+        ctx.lineTo(p.endX, p.endY);
+        ctx.stroke();
+
+        // Origin muzzle flare
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(p.startX, p.startY, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (p.type === 'missile') {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        const angle = Math.atan2(p.vy, p.vx);
+        ctx.rotate(angle);
+
+        // Rocket body
+        ctx.fillStyle = '#FF3B00';
+        ctx.strokeStyle = '#0C0E17';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.roundRect(-10, -5, 18, 10, [0, 3, 3, 0]);
+        ctx.fill();
+        ctx.stroke();
+
+        // Nosecone
+        ctx.fillStyle = '#FFE600';
+        ctx.beginPath();
+        ctx.moveTo(8, -5);
+        ctx.lineTo(17, 0);
+        ctx.lineTo(8, 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Tail fins
+        ctx.fillStyle = '#0F172A';
+        ctx.beginPath();
+        ctx.moveTo(-6, -5);
+        ctx.lineTo(-12, -10);
+        ctx.lineTo(-9, -5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(-6, 5);
+        ctx.lineTo(-12, 10);
+        ctx.lineTo(-9, 5);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Exhaust flame
+        const flameLen = 8 + Math.random() * 8;
+        ctx.fillStyle = '#FFD700';
+        ctx.beginPath();
+        ctx.moveTo(-10, -3);
+        ctx.lineTo(-10 - flameLen, 0);
+        ctx.lineTo(-10, 3);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+      }
     }
   }
 
   clear() {
     this.items = [];
+    this.projectiles = [];
     this.spawnTimer = 3.5;
   }
 }

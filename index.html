@@ -48,6 +48,13 @@
           <span class="btn-label">STANDINGS</span>
         </button>
 
+        <!-- In-Game 4K Recording Indicator -->
+        <div id="rec-indicator" class="rec-indicator hidden" title="Recording in 4K 60FPS">
+          <span class="rec-dot"></span>
+          <span class="rec-tag">REC 4K</span>
+          <span id="rec-time" class="rec-time">00:00</span>
+        </div>
+
         <!-- Tournament Mode Button (Pure SVG Trophy) -->
         <button id="btn-tournament" class="ui-btn ui-btn-featured ui-btn-gold" title="Start Tournament Mode (T)" aria-label="Start Tournament Mode">
           <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
@@ -561,6 +568,32 @@
           <div class="setting-row" id="custom-count-row" style="margin-bottom: 16px;">
             <span>Custom Count</span>
             <input type="number" id="tournament-count-input" class="setting-input" min="1" max="999" value="5" style="width: 100px; text-align: center; font-size: 1rem; font-weight: 700;">
+          </div>
+
+          <!-- 4K Recording Options -->
+          <div class="setting-row" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center;">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="tournament-record-checkbox" style="width:18px;height:18px;accent-color:#FF1E56;cursor:pointer;">
+              <span style="font-weight:700;color:#FFF;display:flex;align-items:center;gap:6px;">
+                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#FF1E56;box-shadow:0 0 8px #FF1E56;"></span>
+                Record Tournament in 4K (60 FPS)
+              </span>
+            </label>
+            <span class="badge-4k" style="font-size:0.75rem;font-weight:800;background:rgba(255,30,86,0.15);color:#FF1E56;border:1px solid rgba(255,30,86,0.3);padding:2px 8px;border-radius:4px;">ULTRA HD</span>
+          </div>
+
+          <!-- Choose Save Destination Folder -->
+          <div class="setting-row" id="record-save-location-row" style="margin-top: 10px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex;flex-direction:column;gap:3px;">
+              <span style="font-size:0.85rem;color:var(--text-muted);">Save Destination:</span>
+              <span id="record-folder-name" style="font-size:0.88rem;font-weight:600;color:var(--accent-cyan);max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Browser Downloads (Default)</span>
+            </div>
+            <button type="button" id="btn-select-save-folder" class="secondary-btn" style="padding:6px 12px;font-size:0.82rem;display:flex;align-items:center;gap:6px;" title="Select custom folder on PC">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>Choose Folder</span>
+            </button>
           </div>
         </div>
 

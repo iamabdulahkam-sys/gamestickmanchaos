@@ -15,6 +15,19 @@ export class BombManager {
     this.fuseTime = 5.0; // 3, 5, 8
     this.spawnTimer = 10.0;
     this.idCounter = 1;
+    this.isTournamentMode = false;
+    this.maxConcurrentBombs = 1;
+  }
+
+  setTournamentMode(isTournament) {
+    this.isTournamentMode = Boolean(isTournament);
+    if (this.isTournamentMode) {
+      // In tournament: 2 to 3 active bombs in the arena!
+      this.maxConcurrentBombs = Math.floor(Math.random() * 2) + 2;
+      this.spawnTimer = 1.5;
+    } else {
+      this.maxConcurrentBombs = 1;
+    }
   }
 
   setSettings(opts = {}) {
@@ -28,13 +41,17 @@ export class BombManager {
   }
 
   getIntervalRange() {
+    if (this.isTournamentMode) {
+      // Rapid spawn interval during tournament to maintain 2-3 bombs
+      return 2.5 + Math.random() * 3.0;
+    }
     const cfg = CONFIG.BOMB_CONFIG.intervals[this.intervalKey] || CONFIG.BOMB_CONFIG.intervals.normal;
     return cfg.min + Math.random() * (cfg.max - cfg.min);
   }
 
   clear() {
     this.bombs = [];
-    this.spawnTimer = this.getIntervalRange();
+    this.spawnTimer = this.isTournamentMode ? 1.5 : this.getIntervalRange();
   }
 
   update(dt, physics, fighters, effects, isBattleOver = false) {
@@ -43,8 +60,9 @@ export class BombManager {
       return;
     }
 
-    // 1. Spawning
-    if (this.bombs.length === 0) {
+    // 1. Spawning (Supports 2-3 concurrent bombs in tournament mode)
+    const maxAllowed = this.isTournamentMode ? this.maxConcurrentBombs : 1;
+    if (this.bombs.length < maxAllowed) {
       this.spawnTimer -= dt;
       if (this.spawnTimer <= 0) {
         this.spawnTimer = this.getIntervalRange();
@@ -70,6 +88,9 @@ export class BombManager {
       if (bomb.timer <= 0) {
         this.detonate(bomb, physics, fighters, effects);
         this.bombs.splice(i, 1);
+        if (this.isTournamentMode) {
+          this.maxConcurrentBombs = Math.floor(Math.random() * 2) + 2;
+        }
       }
     }
   }

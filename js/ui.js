@@ -46,6 +46,13 @@ export class UIManager {
     this.podiumCountdownNum = document.getElementById('podium-next-countdown-num');
     this.podiumCountdownText = document.getElementById('podium-next-countdown-text');
 
+    // 4K Screen Recorder elements
+    this.recIndicator = document.getElementById('rec-indicator');
+    this.recTime = document.getElementById('rec-time');
+    this.recordCheckbox = document.getElementById('tournament-record-checkbox');
+    this.recordFolderName = document.getElementById('record-folder-name');
+    this.btnSelectSaveFolder = document.getElementById('btn-select-save-folder');
+
     this.fighterCards = [];
     this.announcerTimer = null;
 
@@ -165,6 +172,28 @@ export class UIManager {
       });
     }
 
+    // Recording in 4K preferences and folder picker
+    const savedRecordPref = typeof localStorage !== 'undefined' && localStorage.getItem('stickman_record_tournament') === 'true';
+    if (this.recordCheckbox) {
+      this.recordCheckbox.checked = savedRecordPref;
+      this.recordCheckbox.addEventListener('change', () => {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('stickman_record_tournament', this.recordCheckbox.checked ? 'true' : 'false');
+        }
+      });
+    }
+
+    if (this.btnSelectSaveFolder) {
+      this.btnSelectSaveFolder.addEventListener('click', async () => {
+        if (this.game.recorder) {
+          const folderName = await this.game.recorder.chooseSaveDirectory();
+          if (this.recordFolderName) {
+            this.recordFolderName.textContent = folderName;
+          }
+        }
+      });
+    }
+
     const btnStartSeries = document.getElementById('btn-start-tournament-series');
     if (btnStartSeries) {
       btnStartSeries.addEventListener('click', () => {
@@ -175,6 +204,12 @@ export class UIManager {
         } else if (countInput) {
           count = Math.max(1, parseInt(countInput.value, 10) || 1);
         }
+
+        const shouldRecord = this.recordCheckbox ? this.recordCheckbox.checked : false;
+        if (this.game.tournament) {
+          this.game.tournament.isRecordingEnabled = shouldRecord;
+        }
+
         this.hideTournamentSetupModal();
         this.game.startTournament(count);
       });
@@ -1202,6 +1237,48 @@ export class UIManager {
     this.announcerTimer = setTimeout(() => {
       this.announcerEl.className = 'center-announcer';
     }, 1300);
+  }
+
+  /**
+   * Shows banner for dynamic weather & nature shifts during match
+   */
+  showNatureAlert(text) {
+    if (!this.announcerEl || this.game.state === 'RESULT') return;
+    this.announcerEl.textContent = text.toUpperCase();
+    this.announcerEl.className = 'center-announcer active nature-alert';
+
+    clearTimeout(this.announcerTimer);
+    this.announcerTimer = setTimeout(() => {
+      this.announcerEl.className = 'center-announcer';
+    }, 1800);
+  }
+
+  /**
+   * Shows the 4K recording indicator in the HUD
+   */
+  showRecIndicator() {
+    if (this.recIndicator) {
+      this.recIndicator.classList.remove('hidden');
+    }
+  }
+
+  /**
+   * Hides the 4K recording indicator
+   */
+  hideRecIndicator() {
+    if (this.recIndicator) {
+      this.recIndicator.classList.add('hidden');
+    }
+  }
+
+  /**
+   * Updates the timer on the 4K recording indicator
+   * @param {string} timeText Formatted mm:ss string
+   */
+  updateRecTime(timeText) {
+    if (this.recTime) {
+      this.recTime.textContent = timeText;
+    }
   }
 
   /**

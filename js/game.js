@@ -16,6 +16,7 @@ import { ItemManager } from './items.js';
 import { BombManager } from './bomb.js';
 import { sound } from './audio.js';
 import { TournamentManager } from './tournament.js';
+import { GameRecorder } from './recorder.js';
 
 export class GameManager {
   constructor(canvas) {
@@ -40,6 +41,7 @@ export class GameManager {
 
     // Core managers
     this.physics = new PhysicsManager();
+    this.physics.game = this;
     this.effects = new EffectsManager();
     this.ai = new AIManager();
     this.weather = new WeatherManager();
@@ -48,6 +50,7 @@ export class GameManager {
     this.renderer = new Renderer(canvas);
     this.ui = new UIManager(this);
     this.tournament = new TournamentManager(this);
+    this.recorder = new GameRecorder(this);
 
     this.fighters = [];
     this.lastTime = 0;
@@ -412,6 +415,7 @@ export class GameManager {
         this.fighterMaxHp,
         fighterScale
       );
+      fighter.game = this;
       fighter.facing = facing;
 
       // Initial random velocity to activate full octagon arena right from the start
@@ -520,11 +524,17 @@ export class GameManager {
     this.effects.update(dt);
     this.renderer.update(dt);
     this.weather.update(dt, this.physics, this.fighters, this.effects, isBattleOver);
+    if (this.recorder) this.recorder.update(dt);
 
     // 2. State specific updates
     if (this.state === 'BATTLE') {
       // Step Physics with fighters passed for anti-clump low-G buoyancy
       this.physics.update(dt, this.fighters);
+
+      // Tournament mode updates (dynamic in-match weather & nature shifts)
+      if (this.tournament) {
+        this.tournament.update(dt);
+      }
 
       // Item updates (periodic spawns, parachute fall, pickups)
       this.items.update(dt, this.physics, this.fighters, this.effects);

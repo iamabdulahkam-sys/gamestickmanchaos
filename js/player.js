@@ -54,6 +54,8 @@ export class StickmanFighter {
       speedBoost: itemConfig.speedBoost || 1.0,
       knockbackMult: itemConfig.knockbackMult || 1.5,
       comicWord: itemConfig.comicWord || 'POWER UP!',
+      isRanged: !!itemConfig.isRanged,
+      blastRadius: itemConfig.blastRadius || 0,
       duration: 16.0,
     };
   }
@@ -130,8 +132,38 @@ export class StickmanFighter {
       sound.playBonk();
     } else if (this.equippedItem?.type === 'star') {
       sound.playZap();
+    } else if (this.equippedItem?.type === 'laser') {
+      sound.playLaser();
+    } else if (this.equippedItem?.type === 'missile') {
+      sound.playRocket();
     } else {
       sound.playPunch();
+    }
+
+    // Check ranged weapon firing (Laser beam or Rocket Missile)
+    if (this.equippedItem?.isRanged) {
+      const items = this.game?.items || this.physics?.game?.items;
+      if (items) {
+        if (this.equippedItem.type === 'laser') {
+          const allFighters = this.game?.fighters || [];
+          items.spawnLaser(this, this.physics, allFighters, effects);
+        } else if (this.equippedItem.type === 'missile') {
+          items.spawnMissile(this, this.physics, effects);
+        }
+      }
+
+      // Decrement weapon hits / ammo
+      this.equippedItem.hitsLeft--;
+      if (this.equippedItem.hitsLeft <= 0) {
+        if (effects) {
+          const px = this.body.position.x + this.facing * 18 * this.scale;
+          const py = this.body.position.y - 4 * this.scale;
+          effects.addLandDust(px, py);
+          effects.addHitEffect(px, py - 14 * this.scale, 'POOF!', true, this.scale);
+        }
+        this.equippedItem = null;
+      }
+      return;
     }
 
     // Check hit against target
@@ -531,6 +563,43 @@ export class StickmanFighter {
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+      } else if (this.equippedItem.type === 'laser') {
+        // Cyber Laser Blaster in hand
+        ctx.fillStyle = '#0F172A';
+        ctx.strokeStyle = '#00F0FF';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.roundRect(0, -5, 14, 7, 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#00F0FF';
+        ctx.fillRect(4, -3, 6, 3);
+
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(0, 2, 4, 6);
+      } else if (this.equippedItem.type === 'missile') {
+        // Cartoon Rocket Launcher in hand
+        ctx.fillStyle = '#FF3B00';
+        ctx.strokeStyle = '#0C0E17';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(-4, -6, 16, 8, [0, 2, 2, 0]);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#FFE600';
+        ctx.beginPath();
+        ctx.moveTo(12, -6);
+        ctx.lineTo(18, -2);
+        ctx.lineTo(12, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Launcher grip
+        ctx.fillStyle = '#1E293B';
+        ctx.fillRect(-2, 2, 4, 6);
       }
       ctx.restore();
     } else {

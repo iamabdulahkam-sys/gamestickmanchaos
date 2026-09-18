@@ -36,6 +36,7 @@ export class TournamentManager {
     this.completedTournaments = 0;
     this.podiumTransitionTimer = null;
     this.podiumSecondsLeft = 30;
+    this.isRecordingEnabled = false;
 
     this.stages = [
       {
@@ -177,6 +178,12 @@ export class TournamentManager {
       bodyColor: c.bodyColor || c.primaryColor,
     }));
 
+    // Auto-start fresh 4K recording for this tournament if recording is enabled
+    if (this.isRecordingEnabled && this.game.recorder) {
+      const tournNum = this.completedTournaments + 1;
+      this.game.recorder.startRecording(tournNum);
+    }
+
     this.startStageIntro();
   }
 
@@ -267,6 +274,13 @@ export class TournamentManager {
 
     this.game.ui.setTournamentBanner(stage.title, stage.desc);
 
+    // Enable enhanced bomb & weapon drop rates for tournament mode
+    this.game.bombs.setTournamentMode(true);
+    this.game.items.setTournamentMode(true);
+
+    // Initialize dynamic in-match nature shift timer (11 to 16 seconds)
+    this.natureShiftTimer = 11 + Math.random() * 5;
+
     // Start match with stage settings
     this.game.startMatchWithSettings({
       fighterCount: countries.length,
@@ -328,7 +342,9 @@ export class TournamentManager {
       }
     }
 
-    // Stop battle hazards
+    // Stop battle hazards and reset tournament drop rates
+    this.game.bombs.setTournamentMode(false);
+    this.game.items.setTournamentMode(false);
     this.game.bombs.clear();
     this.game.weather.stopLightning();
     sound.playVictory();
@@ -340,6 +356,12 @@ export class TournamentManager {
     if (isFinalStage) {
       // Grand Tournament Podium (Winner)
       this.completedTournaments++;
+
+      // Auto-save this tournament's 4K video recording
+      if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
+        this.game.recorder.stopAndSave(this.completedTournaments);
+      }
+
       const top4Results = standings.slice(0, 4);
       const hasNextTournament = this.completedTournaments < this.totalTournaments;
 
@@ -439,10 +461,79 @@ export class TournamentManager {
       clearInterval(this.transitionTimer);
       this.transitionTimer = null;
     }
+    if (this.game.recorder && this.game.recorder.isRecording) {
+      this.game.recorder.stopAndSave(this.completedTournaments + 1);
+    }
+    this.isRecordingEnabled = false;
+    this.game.bombs.setTournamentMode(false);
+    this.game.items.setTournamentMode(false);
     this.game.ui.hideTournamentIntro();
     this.game.ui.hideTournamentStageCleared();
     this.game.ui.hideTournamentPodium();
     this.game.ui.removeTournamentBanner();
     this.game.restartMatch();
+  }
+
+  /**
+   * Updates tournament timers during active stage battle
+   * @param {number} dt Delta time in seconds
+   */
+  update(dt) {
+    if (!this.isActive || !this.isStageBattleActive || this.stageCleared || this.game.state !== 'BATTLE') {
+      return;
+    }
+
+    if (this.natureShiftTimer !== undefined) {
+      this.natureShiftTimer -= dt;
+      if (this.natureShiftTimer <= 0) {
+        this.natureShiftTimer = 11 + Math.random() * 5;
+        this.triggerDynamicNatureShift();
+      }
+    }
+  }
+
+  /**
+   * Dynamically randomizes weather & nature conditions mid-battle in tournament mode
+   */
+  triggerDynamicNatureShift() {
+    const weathers = ['none', 'rain', 'wind', 'lightning', 'chaos'];
+    const currentW = this.game.weather.weatherType;
+    const availableW = weathers.filter((w) => w !== currentW);
+    const newWeather = availableW[Math.floor(Math.random() * availableW.length)];
+
+    const winds = ['gentle', 'strong', 'typhoon'];
+    const newWind = winds[Math.floor(Math.random() * winds.length)];
+
+    // Apply new weather and wind
+    this.game.weather.setWeather(newWeather);
+    this.game.weather.setWindStrength(newWind);
+
+    // Optional dynamic gravity shift (45% chance)
+    const gravities = ['normal', 'float', 'wave'];
+    let newGravity = null;
+    if (Math.random() < 0.45) {
+      newGravity = gravities[Math.floor(Math.random() * gravities.length)];
+      this.game.physics.setGravityMode(newGravity);
+    }
+
+    // Build prominent announcer banner text
+    let alertText = 'WEATHER SHIFT!';
+    if (newWeather === 'rain') {
+      alertText = 'HEAVY RAINSTORM!';
+    } else if (newWeather === 'lightning') {
+      alertText = 'THUNDERSTORM ALERT!';
+    } else if (newWeather === 'wind') {
+      alertText = `WIND SURGE: ${newWind.toUpperCase()}!`;
+    } else if (newWeather === 'chaos') {
+      alertText = 'CHAOTIC TEMPEST!';
+    } else if (newGravity && newGravity !== 'normal') {
+      alertText = 'LOW-G GRAVITY WAVE!';
+    } else {
+      alertText = 'CALM CLEAR SKY!';
+    }
+
+    this.game.ui.showNatureAlert(alertText);
+    sound.playZap();
+    this.game.effects.triggerScreenShake(6);
   }
 }

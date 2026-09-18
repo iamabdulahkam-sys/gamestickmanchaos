@@ -203,14 +203,17 @@ class FighterAI {
     }
 
     // 4. Core AI Combat & Active Pursuit Tree
-    const effectivePunchRange = this.fighter.punchRange || (CONFIG.FIGHTER.PUNCH_RANGE + 8);
+    const isRanged = this.fighter.equippedItem?.isRanged;
+    const effectivePunchRange = isRanged ? 280 : (this.fighter.punchRange || (CONFIG.FIGHTER.PUNCH_RANGE + 8));
     if (dist <= effectivePunchRange) {
       // IN ATTACK RANGE: Strike aggressively!
       this.state = 'ATTACK';
       this.fighter.facing = dx > 0 ? 1 : -1;
 
-      // Keep light forward pressure to prevent drifting away
-      this.fighter.move(this.fighter.facing * 0.4);
+      // Keep light forward pressure to prevent drifting away (only if melee)
+      if (!isRanged) {
+        this.fighter.move(this.fighter.facing * 0.4);
+      }
 
       if (this.attackDelayTimer <= 0 && this.fighter.punchCooldown <= 0) {
         this.fighter.punch(effects);
