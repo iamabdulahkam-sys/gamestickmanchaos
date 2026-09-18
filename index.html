@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Stickman Flag Chaos</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/style.css">
+  <!-- Offline-first Matter.js with CDN fallback -->
+  <script src="js/lib/matter.min.js"></script>
+  <script>
+    if (!window.Matter) {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"><\/script>');
+    }
+  </script>
+</head>
+<body>
+  <div id="app-container">
+    <!-- Top Navigation & Controls Header -->
+    <header id="top-bar">
+      <div class="logo-group">
+        <h1 class="game-title">
+          <span>STICKMAN</span>
+          <span class="title-flag">FLAG</span>
+          <span class="title-chaos">CHAOS</span>
+        </h1>
+      </div>
+
+      <div class="top-controls">
+        <!-- Roster & Match Setup Button (Pure SVG) -->
+        <button id="btn-roster" class="ui-btn ui-btn-featured" title="Fighter Roster & Customization" aria-label="Fighter Roster">
+          <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span class="btn-label">ROSTER</span>
+        </button>
+
+        <!-- Live Battle Standings Toggle Button (Pure SVG) -->
+        <button id="btn-klasemen" class="ui-btn ui-btn-featured" title="Toggle Standings (K)" aria-label="Toggle Standings">
+          <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span class="btn-label">STANDINGS</span>
+        </button>
+
+        <!-- Tournament Mode Button (Pure SVG Trophy) -->
+        <button id="btn-tournament" class="ui-btn ui-btn-featured ui-btn-gold" title="Start Tournament Mode (T)" aria-label="Start Tournament Mode">
+          <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+            <path d="M4 22h16"/>
+            <path d="M10 14.66V17c0 .55-.45 1-1 1H7v4h10v-4h-2c-.55 0-1-.45-1-1v-2.34"/>
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+          </svg>
+          <span class="btn-label">TOURNAMENT</span>
+        </button>
+
+        <!-- Sound Mute/Unmute Button (Pure SVG) -->
+        <button id="btn-sound" class="ui-btn" title="Toggle Sound (M)" aria-label="Toggle Sound">
+          <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          </svg>
+        </button>
+
+        <!-- Pause / Resume Button (Pure SVG) -->
+        <button id="btn-pause" class="ui-btn" title="Pause / Resume (Space)" aria-label="Pause / Resume">
+          <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="currentColor">
+            <rect x="6" y="4" width="4" height="16" rx="1"/>
+            <rect x="14" y="4" width="4" height="16" rx="1"/>
+          </svg>
+        </button>
+
+        <!-- Restart Match Button (Pure SVG) -->
+        <button id="btn-restart" class="ui-btn" title="Restart Match (R)" aria-label="Restart Match">
+          <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </button>
+
+        <!-- Settings Button (Pure SVG) -->
+        <button id="btn-settings" class="ui-btn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" class="ui-icon" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Game Viewport -->
+    <main id="game-viewport">
+      <div id="canvas-wrapper">
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Dynamic External HUD Bands (Top & Bottom outside Arena) -->
+        <div id="hud-band-top" class="hud-band top"></div>
+        <div id="hud-band-bottom" class="hud-band bottom"></div>
+
+        <!-- Center Announcer (Countdown & Alerts) -->
+        <div id="center-announcer" class="center-announcer">3</div>
+
+        <!-- In-Game Tournament Stage Banner -->
+        <div id="tournament-banner" class="tournament-banner hidden">
+          <div class="tournament-banner-content">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#FFD700" stroke-width="2">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+              <path d="M4 22h16"/>
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+            </svg>
+            <span id="tournament-banner-title" class="banner-title">ROUND OF 64</span>
+            <span id="tournament-banner-sub" class="banner-sub">32 ADVANCING</span>
+          </div>
+          <button id="btn-tournament-exit" class="btn-tournament-exit" title="Exit Tournament" aria-label="Exit Tournament">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Live Battle Standings Panel -->
+        <div id="klasemen-panel" class="klasemen-panel hidden">
+          <div class="klasemen-header">
+            <div class="klasemen-title-group">
+              <svg viewBox="0 0 24 24" class="klasemen-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="20" x2="18" y2="10"/>
+                <line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+              </svg>
+              <span class="klasemen-title">STANDINGS</span>
+              <span id="klasemen-count-badge" class="klasemen-badge">0 ALIVE</span>
+            </div>
+            <div class="klasemen-actions">
+              <button id="btn-klasemen-minimize" class="klasemen-btn-mini" title="Minimize Standings" aria-label="Minimize Standings">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+              </button>
+              <button id="btn-klasemen-close" class="klasemen-btn-mini" title="Close Standings" aria-label="Close Standings">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"/>
+                  <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="klasemen-list" class="klasemen-list"></div>
+        </div>
+
+        <!-- Floating Chip when Minimized -->
+        <button id="klasemen-chip" class="klasemen-chip hidden" title="Open Standings (K)" aria-label="Open Standings">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span>STANDINGS</span>
+          <span id="klasemen-chip-badge" class="chip-badge">0 ALIVE</span>
+        </button>
+      </div>
+    </main>
+
+    <!-- Settings & Roster Modal -->
+    <div id="settings-modal" class="modal-overlay">
+      <div class="modal-card modal-card-large">
+        <button id="settings-close" class="modal-close-btn" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        
+        <!-- Tab Navigation -->
+        <div class="modal-tabs">
+          <button id="tab-btn-setup" class="tab-btn active">ROSTER & TEAMS</button>
+          <button id="tab-btn-arena" class="tab-btn">ARENA & RULES</button>
+          <button id="tab-btn-chaos" class="tab-btn">CHAOS & HAZARDS</button>
+        </div>
+
+        <!-- Tab 1: Roster & Body Colors -->
+        <div id="tab-content-setup" class="tab-pane active">
+          <div class="setting-section">
+            <div class="section-header">
+              <span class="section-title">FIGHTER COUNT</span>
+              <div class="fighter-count-selector">
+                <button class="count-btn" data-count="2">2</button>
+                <button class="count-btn active" data-count="4">4</button>
+                <button class="count-btn" data-count="8">8</button>
+                <button class="count-btn" data-count="16">16</button>
+                <button class="count-btn" data-count="32">32</button>
+                <button class="count-btn" data-count="50">50</button>
+                <button class="count-btn" data-count="100">100</button>
+              </div>
+            </div>
+            <p class="section-hint">Choose countries and customize each stickman's body color (Teams will auto-balance for large matches):</p>
+
+            <div class="roster-quick-actions">
+              <button id="btn-roster-random" class="sub-btn">Random Pick</button>
+              <button id="btn-roster-all" class="sub-btn">Select All 100</button>
+              <button id="btn-roster-top16" class="sub-btn">Top 16</button>
+              <button id="btn-roster-clear" class="sub-btn">Clear All</button>
+              <button id="btn-colors-flag" class="sub-btn">Set All Flag Colors</button>
+              <button id="btn-colors-black" class="sub-btn">Set All Black</button>
+            </div>
+
+            <!-- Tournament Quick Launch Banner -->
+            <div class="roster-tournament-banner">
+              <button id="btn-modal-tournament" class="btn-tournament-cta">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                  <path d="M4 22h16"/>
+                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+                </svg>
+                <span>START TOURNAMENT MODE (ROUND OF 64 TO FINAL FOUR)</span>
+              </button>
+            </div>
+
+            <!-- Search bar for 100 countries -->
+            <div class="roster-search-bar">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="text" id="roster-search-input" placeholder="Search 100 countries..." autocomplete="off">
+              <span id="roster-count-badge" class="roster-count-badge">100 Countries</span>
+            </div>
+
+            <!-- 100 Countries Selection Grid -->
+            <div id="roster-grid" class="roster-grid"></div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Arena & Rules -->
+        <div id="tab-content-arena" class="tab-pane">
+          <div class="settings-category-grid">
+            <!-- Group 1: Arena Configuration -->
+            <div class="settings-subcard">
+              <div class="settings-subcard-title">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                  <polyline points="2 17 12 22 22 17"/>
+                  <polyline points="2 12 12 17 22 12"/>
+                </svg>
+                <span>ARENA RING SETUP</span>
+              </div>
+
+              <!-- Screen Sharpness & Resolution Selection -->
+              <div class="setting-row">
+                <span>Graphics Sharpness (Resolution)</span>
+                <select id="setting-resolution" class="setting-select">
+                  <option value="auto" selected>Auto (Native Display / HiDPI)</option>
+                  <option value="720p">Standard HD (720p - 1280×720)</option>
+                  <option value="1080p">Full HD (1080p - 1920×1080)</option>
+                  <option value="1440p">2K QHD (1440p - 2560×1440)</option>
+                  <option value="4k">Ultra HD 4K (2160p - 3840×2160)</option>
+                </select>
+              </div>
+
+              <!-- Arena Shape Selection -->
+              <div class="setting-row">
+                <span>Ring Shape</span>
+                <select id="setting-arena-shape" class="setting-select">
+                  <option value="octagon" selected>Octagon Ring (8-Sided)</option>
+                  <option value="rectangle_full">Full Screen Rectangle</option>
+                  <option value="rectangle">Boxing / Wrestling Ring (Center Ring)</option>
+                  <option value="star">Comic Star Ring (5-Pointed Star)</option>
+                  <option value="circle">Circular Dome Ring (Full Circle)</option>
+                </select>
+              </div>
+
+              <!-- Arena Size Selection -->
+              <div class="setting-row">
+                <span>Arena Scale / Size</span>
+                <select id="setting-arena-size" class="setting-select">
+                  <option value="normal" selected>Normal Arena</option>
+                  <option value="small">Small Arena</option>
+                  <option value="large">Large Arena</option>
+                </select>
+              </div>
+
+              <!-- Background Theme Selection -->
+              <div class="setting-row">
+                <span>Visual Theme</span>
+                <select id="setting-theme" class="setting-select">
+                  <option value="neon" selected>Cyber Neon</option>
+                  <option value="comic">Retro Comic</option>
+                  <option value="cosmic">Cosmic Galaxy</option>
+                  <option value="volcano">Volcano Pit</option>
+                  <option value="dojo">Royal Dojo</option>
+                </select>
+              </div>
+
+              <!-- Center Obstacle Selection -->
+              <div class="setting-row">
+                <span>Center Obstacle</span>
+                <select id="setting-obstacle" class="setting-select">
+                  <option value="none" selected>None (Clear Ring)</option>
+                  <option value="bumper">Bouncy Bumper (Spring Punch)</option>
+                  <option value="pillars">Twin Pillars</option>
+                  <option value="platform">Floating Platform</option>
+                  <option value="spinner">Spinning Bar</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Group 2: Battle Physics & Rules -->
+            <div class="settings-subcard">
+              <div class="settings-subcard-title">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                </svg>
+                <span>BATTLE RULES & PHYSICS</span>
+              </div>
+
+              <!-- Fighter Base HP -->
+              <div class="setting-row">
+                <span>Base HP (Durability)</span>
+                <select id="setting-hp" class="setting-select">
+                  <option value="100">Quick Match (100 HP)</option>
+                  <option value="250" selected>Balanced (250 HP - Recommended)</option>
+                  <option value="400">Epic Brawl (400 HP)</option>
+                  <option value="700">Marathon (700 HP)</option>
+                </select>
+              </div>
+
+              <!-- Movement Speed -->
+              <div class="setting-row">
+                <span>Movement Speed</span>
+                <select id="setting-movement-speed" class="setting-select">
+                  <option value="0.35">Slow Motion (0.35x)</option>
+                  <option value="0.65">Relaxed (0.65x)</option>
+                  <option value="1.0" selected>Normal (1.0x)</option>
+                  <option value="1.35">Turbo Fast (1.35x)</option>
+                </select>
+              </div>
+
+              <!-- Bounce Speed -->
+              <div class="setting-row">
+                <span>Bounce Strength</span>
+                <select id="setting-bounce" class="setting-select">
+                  <option value="0.15">Ultra Gentle (0.15x)</option>
+                  <option value="0.35">Super Slow (0.35x)</option>
+                  <option value="0.65">Soft (0.65x)</option>
+                  <option value="1.0" selected>Normal (1.0x)</option>
+                  <option value="1.5">Bouncy (1.5x)</option>
+                  <option value="2.5">Crazy (2.5x)</option>
+                </select>
+              </div>
+
+              <!-- Gravity & Arena Float -->
+              <div class="setting-row">
+                <span>Gravity & Float Mode</span>
+                <select id="setting-gravity" class="setting-select">
+                  <option value="normal" selected>Normal Gravity</option>
+                  <option value="float">Floating Low-G (Whole Arena)</option>
+                  <option value="zerog">Zero-G Space (Full 360° Float)</option>
+                  <option value="wave">Chaotic Wave (Floating Waves)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Chaos & Hazards -->
+        <div id="tab-content-chaos" class="tab-pane">
+          <div class="settings-category-grid">
+            <!-- Group 1: Weather Hazards -->
+            <div class="settings-subcard">
+              <div class="settings-subcard-title">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+                </svg>
+                <span>WEATHER & NATURE</span>
+              </div>
+
+              <!-- Weather System -->
+              <div class="setting-row">
+                <span>Weather System</span>
+                <select id="setting-weather" class="setting-select">
+                  <option value="none" selected>Clear Sky (None)</option>
+                  <option value="rain">Rainstorm (Floor Ripples)</option>
+                  <option value="wind">Wind Gusts (Push & Lift Force)</option>
+                  <option value="lightning">Thunderstorm (Lightning Strikes)</option>
+                  <option value="chaos">Dynamic Chaos (Random Shifts)</option>
+                </select>
+              </div>
+
+              <!-- Wind Lifting Strength -->
+              <div class="setting-row">
+                <span>Wind Gust & Lift Power</span>
+                <select id="setting-wind-strength" class="setting-select">
+                  <option value="breeze">Gentle Breeze</option>
+                  <option value="strong" selected>Strong Gusts (Lifting Updraft)</option>
+                  <option value="typhoon">Typhoon Chaos (Flying Participants)</option>
+                </select>
+              </div>
+
+              <!-- Lightning Strikes & Interval -->
+              <div class="setting-row">
+                <span>Lightning Strike Count</span>
+                <select id="setting-lightning-count" class="setting-select">
+                  <option value="1">Single Bolt (1x)</option>
+                  <option value="2" selected>Double Strike (2x)</option>
+                  <option value="4">Thunder Barrage (4x)</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <span>Lightning Frequency</span>
+                <select id="setting-lightning-interval" class="setting-select">
+                  <option value="rare">Rare (12-20s)</option>
+                  <option value="normal" selected>Normal (6-10s)</option>
+                  <option value="intense">Intense (2.5-5s)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Group 2: Bombs & Audio -->
+            <div class="settings-subcard">
+              <div class="settings-subcard-title">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="9"/>
+                  <path d="m15 9-6 6"/>
+                  <path d="m9 9 6 6"/>
+                </svg>
+                <span>HAZARDS & SOUND</span>
+              </div>
+
+              <!-- Time Bomb in Arena Settings -->
+              <div class="setting-row">
+                <span>Time Bomb</span>
+                <select id="setting-bomb-enabled" class="setting-select">
+                  <option value="true" selected>Enabled (Random Spawn)</option>
+                  <option value="false">Disabled (Off)</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <span>Bomb Spawn Frequency</span>
+                <select id="setting-bomb-interval" class="setting-select">
+                  <option value="frequent">Frequent (8-14s)</option>
+                  <option value="normal" selected>Normal (15-25s)</option>
+                  <option value="rare">Rare (30-45s)</option>
+                </select>
+              </div>
+              <div class="setting-row">
+                <span>Bomb Fuse Timer</span>
+                <select id="setting-bomb-fuse" class="setting-select">
+                  <option value="3">3 Seconds (Panic Countdown)</option>
+                  <option value="5" selected>5 Seconds (Standard)</option>
+                  <option value="8">8 Seconds (Long Fuse)</option>
+                </select>
+              </div>
+
+              <!-- Sound Volume -->
+              <div class="setting-row">
+                <span>Sound Volume</span>
+                <input type="range" id="setting-volume" class="setting-slider" min="0" max="1" step="0.05" value="0.6">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Apply & Start Button -->
+        <div class="modal-footer">
+          <button id="btn-apply-roster" class="action-btn">START BATTLE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Winner Celebration (Docked outside arena, clear view) -->
+    <div id="winner-modal" class="winner-overlay">
+      <div class="winner-card" id="winner-card">
+        <div class="winner-card-header">
+          <div class="winner-trophy-icon">
+            <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#FFE600" stroke-width="2">
+              <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/>
+              <path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/>
+              <path d="M4 22h16"/>
+              <path d="M10 14.66V18c0 1.1-.9 2-2 2h-1"/>
+              <path d="M14 14.66V18c0 1.1.9 2 2 2h1"/>
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+            </svg>
+          </div>
+          <button id="btn-winner-minimize" class="winner-min-btn" title="Toggle Arena View" aria-label="Toggle Arena View">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+
+        <h2 class="winner-champion-title">CHAMPION!</h2>
+        <div id="winner-flag" class="winner-flag-display"></div>
+        <p id="winner-name" class="winner-name-title">INDONESIA</p>
+
+        <div class="winner-actions">
+          <button id="btn-play-again" class="action-btn">PLAY AGAIN</button>
+          <button id="btn-winner-roster" class="secondary-btn">ROSTER / SETTINGS</button>
+        </div>
+      </div>
+
+      <!-- Minimized Floating Chip (Leaves 100% of the screen completely clear) -->
+      <button id="winner-min-chip" class="winner-chip" style="display: none;" title="Expand Champion Details">
+        <span class="chip-trophy">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FFE600" stroke-width="2">
+            <path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/>
+            <path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/>
+            <path d="M4 22h16"/>
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+          </svg>
+        </span>
+        <span id="winner-chip-name" class="chip-text">CHAMPION</span>
+        <span class="chip-action">Details</span>
+      </button>
+    </div>
+
+    <!-- Tournament Setup & Multi-Series Modal -->
+    <div id="tournament-setup-modal" class="modal-overlay">
+      <div class="modal-card tournament-setup-card">
+        <div class="tournament-setup-header" style="display:flex;align-items:center;justify-content:space-between;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,0.08);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#FFD700" stroke-width="2">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+              <path d="M4 22h16"/>
+              <path d="M10 14.66V17c0 .55-.45 1-1 1H7v4h10v-4h-2c-.55 0-1-.45-1-1v-2.34"/>
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+            </svg>
+            <h2 style="margin:0;font-size:1.3rem;font-weight:800;letter-spacing:1px;color:#FFD700;">TOURNAMENT SETUP</h2>
+          </div>
+          <button id="tournament-setup-close" class="modal-close-btn" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="setup-body" style="padding: 18px 0;">
+          <p class="section-hint" style="margin-bottom: 18px; line-height: 1.5;">Choose how many tournaments to play in sequence. Each tournament is 100% independent with freshly shuffled countries and dynamic arena conditions:</p>
+
+          <div class="setting-row" style="margin-bottom: 18px;">
+            <span>Total Tournaments</span>
+            <div class="t-preset-group">
+              <button class="t-preset-btn" data-count="1">1</button>
+              <button class="t-preset-btn" data-count="3">3</button>
+              <button class="t-preset-btn active" data-count="5">5</button>
+              <button class="t-preset-btn" data-count="10">10</button>
+              <button class="t-preset-btn" data-count="infinite" title="Continuous Loop without Stop">&infin; Infinite</button>
+            </div>
+          </div>
+
+          <div class="setting-row" id="custom-count-row" style="margin-bottom: 16px;">
+            <span>Custom Count</span>
+            <input type="number" id="tournament-count-input" class="setting-input" min="1" max="999" value="5" style="width: 100px; text-align: center; font-size: 1rem; font-weight: 700;">
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:12px;margin-top:10px;">
+          <button id="btn-tournament-setup-cancel" class="secondary-btn">CANCEL</button>
+          <button id="btn-start-tournament-series" class="action-btn" style="display:inline-flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <polygon points="5 3 19 12 5 21"/>
+            </svg>
+            <span>START TOURNAMENT</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tournament Stage Introduction Modal (~30s Country Showcase) -->
+    <div id="tournament-intro-modal" class="modal-overlay">
+      <div class="modal-card tournament-card">
+        <div class="tournament-intro-header">
+          <div class="tournament-title-row">
+            <div class="tournament-title-icon">
+              <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#FFD700" stroke-width="2">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                <path d="M4 22h16"/>
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+              </svg>
+            </div>
+            <div>
+              <h2 id="tournament-intro-stage-title" class="tournament-main-title">ROUND OF 64</h2>
+              <p id="tournament-intro-stage-sub" class="tournament-sub-title">64 Countries Battling • 32 Advance to Next Round</p>
+            </div>
+          </div>
+          <button id="tournament-intro-exit" class="modal-close-btn" title="Exit Tournament" aria-label="Exit Tournament">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- 10-Second Countdown & Action Strip -->
+        <div class="tournament-timer-strip">
+          <div class="timer-display-group">
+            <div class="timer-circle-wrap">
+              <span id="tournament-timer-num" class="timer-num">10</span>
+              <span class="timer-sec-label">SEC</span>
+            </div>
+            <div class="timer-info-text">
+              <span class="timer-highlight">Participating Countries Showcase</span>
+              <span class="timer-sub">Battle will start automatically when timer reaches zero...</span>
+            </div>
+          </div>
+          <button id="btn-tournament-skip-intro" class="tournament-start-btn" title="Skip Countdown and Start Battle Now">
+            <span>START BATTLE NOW</span>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <polygon points="5 3 19 12 5 21"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Randomized Arena Conditions Forecast -->
+        <div class="tournament-conditions-box">
+          <span class="conditions-title">STAGE ARENA & WEATHER CONDITIONS (RANDOMIZED):</span>
+          <div id="tournament-conditions-grid" class="conditions-grid">
+            <!-- Dynamically populated tags -->
+          </div>
+        </div>
+
+        <!-- Competing Countries Showcase Grid -->
+        <div class="tournament-countries-section">
+          <div class="countries-header-bar">
+            <span id="tournament-countries-count" class="countries-count-label">PARTICIPATING COUNTRIES:</span>
+          </div>
+          <div id="tournament-intro-grid" class="tournament-countries-grid">
+            <!-- Dynamically populated country cards -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tournament Stage Cleared Modal -->
+    <div id="tournament-stage-cleared-modal" class="modal-overlay">
+      <div class="modal-card stage-cleared-card">
+        <div class="stage-cleared-header">
+          <div class="cleared-icon-wrap">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#00FF87" stroke-width="2.5">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <div>
+            <h2 id="cleared-stage-title" class="cleared-main-title">ROUND OF 64 COMPLETE!</h2>
+            <p id="cleared-stage-sub" class="cleared-sub-title">32 Countries Qualified for Round of 32!</p>
+          </div>
+        </div>
+
+        <div class="cleared-results-wrapper">
+          <div class="cleared-column">
+            <h3 class="column-title success">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              QUALIFIED FOR NEXT ROUND
+            </h3>
+            <div id="cleared-qualifiers-grid" class="cleared-grid qualifiers"></div>
+          </div>
+          <div class="cleared-column">
+            <h3 class="column-title eliminated">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              ELIMINATED
+            </h3>
+            <div id="cleared-eliminated-grid" class="cleared-grid eliminated"></div>
+          </div>
+        </div>
+
+        <div class="cleared-bottom-bar">
+          <span id="cleared-countdown-text" class="cleared-countdown">Advancing to next round in 6 seconds...</span>
+          <button id="btn-cleared-next" class="action-btn">ADVANCE TO NEXT ROUND</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tournament Grand Finale Winner Modal -->
+    <div id="tournament-podium-modal" class="modal-overlay">
+      <div class="modal-card podium-card">
+        <div class="podium-header">
+          <h1 class="podium-title">TOURNAMENT CHAMPION!</h1>
+        </div>
+
+        <!-- Winner Only Display -->
+        <div id="podium-display" class="podium-display">
+          <!-- Populated by JS: Winner Only -->
+        </div>
+
+        <!-- Inter-Tournament 30s Countdown Intermission Box -->
+        <div id="podium-next-countdown-box" class="podium-countdown-box hidden" style="margin-top: 10px; text-align: center;">
+          <div class="countdown-pulse-wrap" style="display:inline-flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,215,0,0.12);border:1px solid rgba(255,215,0,0.3);padding:4px 14px;border-radius:20px;margin-bottom:8px;">
+            <span id="podium-next-countdown-num" style="font-size:1.35rem;font-weight:900;color:#FFD700;font-variant-numeric:tabular-nums;">30</span>
+            <span style="font-size:0.75rem;font-weight:700;letter-spacing:1px;color:#FFD700;">SECONDS</span>
+          </div>
+          <p id="podium-next-countdown-text" style="margin:0 0 10px 0;font-size:0.86rem;color:#E2E8F0;">Next tournament starting automatically in 30 seconds...</p>
+          <div class="podium-next-actions" style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+            <button id="btn-podium-skip-timer" class="action-btn" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;font-size:0.85rem;">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                <polygon points="5 3 19 12 5 21"/>
+              </svg>
+              <span>START NEXT TOURNAMENT NOW</span>
+            </button>
+            <button id="btn-podium-stop-series" class="secondary-btn" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;font-size:0.82rem;">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              <span>STOP & RETURN TO LOBBY</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Normal Finish Actions (Shown when final tournament completes) -->
+        <div id="podium-normal-actions" class="podium-actions">
+          <button id="btn-podium-restart" class="action-btn" style="display:inline-flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+              <path d="M4 22h16"/>
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
+            </svg>
+            <span>PLAY TOURNAMENT AGAIN</span>
+          </button>
+          <button id="btn-podium-exit" class="secondary-btn" style="display:inline-flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            <span>RETURN TO LOBBY</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Debug Panel (?debug=1 or press 'D') -->
+    <div id="debug-panel">
+      <div class="debug-row">
+        <span id="fps-counter">60 FPS</span>
+        <button id="debug-btn-pause" class="debug-btn">Pause</button>
+        <button id="debug-btn-restart" class="debug-btn">Restart</button>
+        <button id="debug-btn-punch" class="debug-btn">Test Punch</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Entry Script Module -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
