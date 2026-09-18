@@ -1,8 +1,9 @@
 /**
- * Stickman Flag Chaos - In-Game 4K Screen Recorder Module
- * Captures pixel-perfect 4K 60 FPS video directly from HTML5 Canvas with synchronized Web Audio.
- * Supports custom save folder via File System Access API with automatic fallback to browser download.
- * Automatically saves per tournament and seamlessly continues recording for multi-tournament series.
+ * Stickman Flag Chaos - In-Game 4K Screen & Tab Recorder Module
+ * Captures full tab view (Canvas, Standings, Champion Podium, Topbar, Surrounding UI)
+ * with synchronized Web Audio and Tab Audio using Tab Capture API (getDisplayMedia).
+ * Encodes directly to standard MP4 (H.264/AAC).
+ * Automatically saves per tournament and seamlessly retains stream across multi-tournament series.
  */
 
 export class GameRecorder {
@@ -15,21 +16,26 @@ export class GameRecorder {
     this.currentTournamentIndex = 1;
     this.saveDirHandle = null;
     this.saveFolderName = 'Browser Downloads (Default)';
+    this.displayStream = null;
+    this.combinedStream = null;
+    this.audioMixerDest = null;
     this.mimeType = this.detectSupportedMimeType();
   }
 
   /**
-   * Detects optimal supported MIME type in current browser
+   * Detects optimal supported MP4 MIME type in current browser
    */
   detectSupportedMimeType() {
-    if (typeof MediaRecorder === 'undefined') return 'video/webm';
+    if (typeof MediaRecorder === 'undefined') return 'video/mp4';
 
     const types = [
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4;codecs=avc1',
+      'video/mp4;codecs=h264',
+      'video/mp4',
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
-      'video/mp4;codecs=avc1,mp4a.40.2',
       'video/webm',
-      'video/mp4',
     ];
 
     for (const t of types) {
@@ -37,7 +43,7 @@ export class GameRecorder {
         return t;
       }
     }
-    return 'video/webm';
+    return 'video/mp4';
   }
 
   /**
@@ -55,7 +61,7 @@ export class GameRecorder {
         return this.saveFolderName;
       } catch (err) {
         if (err.name !== 'AbortError') {
-          console.warn('Directory picker error, defaulting to browser downloads:', err);
+          console.warn('[GameRecorder] Directory picker error, defaulting to browser downloads:', err);
         }
       }
     }
@@ -65,12 +71,122 @@ export class GameRecorder {
   }
 
   /**
-   * Starts recording canvas in 4K 60FPS with Web Audio
-   * @param {number} tournamentNumber The index of the current tournament in the series
+   * Acquires video stream via Tab Capture API (getDisplayMedia) to record
+   * the full tab (Canvas + Standings + Podium + Topbar).
+   * Reuses active stream across tournaments in a series without asking permission again.
+   * Gracefully falls back to canvas capture if prompt is cancelled or unsupported.
+   * @returns {Promise<MediaStream|null>}
    */
-  startRecording(tournamentNumber = 1) {
+  async acquireStream() {
+    // 1. Reuse existing active display stream if already granted during this tournament series
+    if (this.displayStream && this.displayStream.active) {
+      const activeVideo = this.displayStream.getVideoTracks().filter((t) => t.readyState === 'live');
+      if (activeVideo.length > 0) {
+        return this.displayStream;
+      }
+    }
+
+    // 2. Request Tab Capture via getDisplayMedia
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getDisplayMedia) {
+      try {
+        const displayPromise = navigator.mediaDevices.getDisplayMedia({
+          video: {
+            displaySurface: 'browser',
+            frameRate: { ideal: 60, max: 60 },
+          },
+          audio: {
+            suppressLocalAudioPlayback: false,
+          },
+          preferCurrentTab: true,
+          selfBrowserSurface: 'include',
+          systemAudio: 'include',
+        });
+
+        // 10-second safety timeout so recorder never hangs if prompt is dismissed silently
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('getDisplayMedia timeout')), 10000)
+        );
+
+        const stream = await Promise.race([displayPromise, timeoutPromise]);
+
+        this.displayStream = stream;
+
+        // Clean up if user manually clicks "Stop sharing" on the browser banner
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          videoTrack.addEventListener('ended', () => {
+            console.log('[GameRecorder] Tab/screen capture ended by user');
+            this.stopAllStreams();
+          });
+        }
+
+        return stream;
+      } catch (err) {
+        console.warn('[GameRecorder] getDisplayMedia cancelled, timed out or unavailable, falling back to canvas capture:', err);
+      }
+    }
+
+    // 3. Fallback: Direct canvas capture stream
+    if (this.game.canvas?.captureStream) {
+      return this.game.canvas.captureStream(60);
+    }
+
+    return null;
+  }
+
+  /**
+   * Combines video stream with synchronized game Web Audio and Tab Audio into a single MediaStream
+   * @param {MediaStream} rawStream
+   * @returns {MediaStream}
+   */
+  createCombinedStream(rawStream) {
+    if (!rawStream) return null;
+
+    const videoTracks = rawStream.getVideoTracks();
+    const tabAudioTracks = rawStream.getAudioTracks();
+
+    // Get Web Audio synthesizer stream from SoundManager
+    const gameAudioStream = this.game.sound ? this.game.sound.getAudioStream() : null;
+    const gameAudioTracks = gameAudioStream ? gameAudioStream.getAudioTracks() : [];
+
+    const finalAudioTracks = [];
+
+    // If both tab audio and game audio exist, mix them via Web Audio AudioContext
+    if (tabAudioTracks.length > 0 && gameAudioTracks.length > 0 && this.game.sound?.ctx) {
+      try {
+        const audioCtx = this.game.sound.ctx;
+        if (!this.audioMixerDest) {
+          this.audioMixerDest = audioCtx.createMediaStreamDestination();
+        }
+        const tabSource = audioCtx.createMediaStreamSource(new MediaStream([tabAudioTracks[0]]));
+        const gameSource = audioCtx.createMediaStreamSource(new MediaStream([gameAudioTracks[0]]));
+        tabSource.connect(this.audioMixerDest);
+        gameSource.connect(this.audioMixerDest);
+        finalAudioTracks.push(...this.audioMixerDest.stream.getAudioTracks());
+      } catch (e) {
+        console.warn('[GameRecorder] Failed to mix tab and game audio, using game audio track:', e);
+        finalAudioTracks.push(gameAudioTracks[0]);
+      }
+    } else if (gameAudioTracks.length > 0) {
+      finalAudioTracks.push(gameAudioTracks[0]);
+    } else if (tabAudioTracks.length > 0) {
+      finalAudioTracks.push(tabAudioTracks[0]);
+    }
+
+    return new MediaStream([
+      ...videoTracks,
+      ...finalAudioTracks,
+    ]);
+  }
+
+  /**
+   * Starts recording the tournament in 4K MP4 with full UI and synchronized audio
+   * @param {number} tournamentNumber The index of the current tournament in the series
+   * @returns {Promise<boolean>}
+   */
+  async startRecording(tournamentNumber = 1) {
     if (this.isRecording) {
-      this.stopAndSave(this.currentTournamentIndex);
+      await this.stopAndSave(this.currentTournamentIndex);
     }
 
     this.currentTournamentIndex = tournamentNumber;
@@ -78,35 +194,33 @@ export class GameRecorder {
     this.elapsedSeconds = 0;
 
     try {
-      const canvas = this.game.canvas;
-      if (!canvas) {
-        console.warn('Cannot record: Canvas element not found');
+      const rawStream = await this.acquireStream();
+      if (!rawStream) {
+        console.warn('[GameRecorder] Cannot record: No video stream available');
         return false;
       }
 
-      // Capture 60 FPS video stream directly from game canvas
-      const videoStream = canvas.captureStream(60);
-
-      // Get audio stream from SoundManager if available
-      let combinedStream = videoStream;
-      const audioStream = this.game.sound ? this.game.sound.getAudioStream() : null;
-
-      if (audioStream && audioStream.getAudioTracks().length > 0) {
-        const audioTrack = audioStream.getAudioTracks()[0];
-        combinedStream = new MediaStream([
-          ...videoStream.getVideoTracks(),
-          audioTrack,
-        ]);
+      this.combinedStream = this.createCombinedStream(rawStream);
+      if (!this.combinedStream) {
+        console.warn('[GameRecorder] Failed to create combined stream');
+        return false;
       }
 
-      // Configure MediaRecorder with high bitrate for 4K quality (28 Mbps)
+      this.mimeType = this.detectSupportedMimeType();
+
+      // Configure MediaRecorder for 4K quality with crisp MP4 encoding
       const options = {
         mimeType: this.mimeType,
-        videoBitsPerSecond: 28000000, // 28 Mbps for crisp 4K Ultra HD
+        videoBitsPerSecond: 28000000, // 28 Mbps for 4K Ultra HD
         audioBitsPerSecond: 192000,   // 192 kbps high fidelity audio
       };
 
-      this.mediaRecorder = new MediaRecorder(combinedStream, options);
+      try {
+        this.mediaRecorder = new MediaRecorder(this.combinedStream, options);
+      } catch (optErr) {
+        console.warn(`[GameRecorder] Options ${this.mimeType} rejected, falling back to default options:`, optErr);
+        this.mediaRecorder = new MediaRecorder(this.combinedStream);
+      }
 
       this.mediaRecorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
@@ -114,17 +228,17 @@ export class GameRecorder {
         }
       };
 
-      // Start recording with 1-second chunks for smooth memory management
+      // Slice chunks every 1 second for steady buffer management
       this.mediaRecorder.start(1000);
       this.isRecording = true;
 
-      // Update UI indicator
+      // Update UI HUD
       if (this.game.ui) {
         this.game.ui.showRecIndicator();
         this.game.ui.updateRecTime('00:00');
       }
 
-      console.log(`[GameRecorder] Started 4K recording for Tournament #${tournamentNumber} using ${this.mimeType}`);
+      console.log(`[GameRecorder] Started 4K MP4 recording for Tournament #${tournamentNumber} using ${this.mimeType}`);
       return true;
     } catch (err) {
       console.error('[GameRecorder] Failed to start MediaRecorder:', err);
@@ -134,7 +248,7 @@ export class GameRecorder {
   }
 
   /**
-   * Stops the current tournament recording and automatically saves the video file
+   * Stops the current tournament recording and automatically saves the video file as .mp4
    * @param {number} tournamentNumber The index of the tournament completed
    * @returns {Promise<boolean>}
    */
@@ -153,12 +267,12 @@ export class GameRecorder {
     return new Promise((resolve) => {
       this.mediaRecorder.onstop = async () => {
         try {
-          const extension = this.mimeType.includes('mp4') ? 'mp4' : 'webm';
+          const extension = 'mp4';
           const now = new Date();
           const timestamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
           const filename = `Stickman_Tournament_${tournNum}_4K_${timestamp}.${extension}`;
 
-          const blob = new Blob(this.recordedChunks, { type: this.mimeType });
+          const blob = new Blob(this.recordedChunks, { type: this.mimeType || 'video/mp4' });
           this.recordedChunks = [];
 
           // 1. Save directly into chosen directory via File System Access API if user selected one
@@ -171,7 +285,7 @@ export class GameRecorder {
               console.log(`[GameRecorder] Video saved directly to ${this.saveFolderName}/${filename}`);
 
               if (this.game.ui) {
-                this.game.ui.showNatureAlert(`TOURNAMENT #${tournNum} SAVED (4K)!`);
+                this.game.ui.showNatureAlert(`TOURNAMENT #${tournNum} SAVED (MP4)!`);
               }
               resolve(true);
               return;
@@ -196,7 +310,7 @@ export class GameRecorder {
 
           console.log(`[GameRecorder] Video downloaded automatically as ${filename}`);
           if (this.game.ui) {
-            this.game.ui.showNatureAlert(`TOURNAMENT #${tournNum} RECORDING SAVED!`);
+            this.game.ui.showNatureAlert(`TOURNAMENT #${tournNum} MP4 RECORDING SAVED!`);
           }
 
           resolve(true);
@@ -207,12 +321,35 @@ export class GameRecorder {
       };
 
       try {
-        this.mediaRecorder.stop();
+        if (this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+        } else {
+          resolve(false);
+        }
       } catch (stopErr) {
         console.warn('[GameRecorder] Error stopping MediaRecorder:', stopErr);
         resolve(false);
       }
     });
+  }
+
+  /**
+   * Cleanly closes all display and media streams (called on tournament exit)
+   */
+  stopAllStreams() {
+    if (this.displayStream) {
+      try {
+        this.displayStream.getTracks().forEach((track) => track.stop());
+      } catch (e) {}
+      this.displayStream = null;
+    }
+    if (this.combinedStream) {
+      try {
+        this.combinedStream.getTracks().forEach((track) => track.stop());
+      } catch (e) {}
+      this.combinedStream = null;
+    }
+    this.audioMixerDest = null;
   }
 
   /**

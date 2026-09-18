@@ -217,39 +217,21 @@ export class TournamentManager {
     this.game.fighters = [];
 
     // Reset intro timer
-    if (this.introTimer) {
-      clearInterval(this.introTimer);
-      this.introTimer = null;
-    }
     this.introSecondsLeft = CONFIG.TOURNAMENT?.INTRO_DURATION_SECONDS || 10;
+    this.isShowingIntro = true;
 
     // Inform UI to display intro modal
     this.game.ui.showTournamentIntro(stage, this.currentPool, this.stageConditions, this.introSecondsLeft);
 
     // Play stage intro sound
     sound.playCountdown(3);
-
-    // 10-second countdown for stage intro showcase
-    this.introTimer = setInterval(() => {
-      this.introSecondsLeft--;
-      this.game.ui.updateTournamentIntroTimer(this.introSecondsLeft);
-
-      if (this.introSecondsLeft <= 0) {
-        clearInterval(this.introTimer);
-        this.introTimer = null;
-        this.launchStageBattle();
-      }
-    }, 1000);
   }
 
   /**
    * Skips the 10-second intro immediately and launches stage battle
    */
   skipIntro() {
-    if (this.introTimer) {
-      clearInterval(this.introTimer);
-      this.introTimer = null;
-    }
+    this.isShowingIntro = false;
     this.launchStageBattle();
   }
 
@@ -257,10 +239,7 @@ export class TournamentManager {
    * Launches the physics battle for the current stage with the randomized conditions
    */
   launchStageBattle() {
-    if (this.introTimer) {
-      clearInterval(this.introTimer);
-      this.introTimer = null;
-    }
+    this.isShowingIntro = false;
     this.stageCleared = false;
     this.isStageBattleActive = true;
     this.game.ui.hideTournamentIntro();
@@ -357,31 +336,21 @@ export class TournamentManager {
       // Grand Tournament Podium (Winner)
       this.completedTournaments++;
 
-      // Auto-save this tournament's 4K video recording
-      if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
-        this.game.recorder.stopAndSave(this.completedTournaments);
-      }
-
       const top4Results = standings.slice(0, 4);
       const hasNextTournament = this.completedTournaments < this.totalTournaments;
 
       setTimeout(() => {
         if (hasNextTournament) {
           this.podiumSecondsLeft = 30;
-          this.game.ui.showTournamentPodium(top4Results, true, this.podiumSecondsLeft);
-
-          if (this.podiumTransitionTimer) clearInterval(this.podiumTransitionTimer);
-          this.podiumTransitionTimer = setInterval(() => {
-            this.podiumSecondsLeft--;
-            this.game.ui.updatePodiumNextCountdown(this.podiumSecondsLeft);
-            if (this.podiumSecondsLeft <= 0) {
-              clearInterval(this.podiumTransitionTimer);
-              this.podiumTransitionTimer = null;
-              this.launchNewTournamentInstance();
-            }
-          }, 1000);
+          this.isShowingPodiumCountdown = true;
+          this.game.ui.showTournamentPodium(top4Results, true, Math.ceil(this.podiumSecondsLeft));
         } else {
+          this.isShowingPodiumCountdown = false;
           this.game.ui.showTournamentPodium(top4Results, false);
+          // When all tournaments finish, record 8 seconds of podium celebration then auto-save MP4
+          if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
+            this.finalPodiumSaveTimer = 8;
+          }
         }
       }, 1000);
     } else {
@@ -396,19 +365,8 @@ export class TournamentManager {
 
       setTimeout(() => {
         this.game.ui.showTournamentStageCleared(stage, nextStage, qualifiers, eliminated);
-
-        // Auto-advance to next stage after 6 seconds
-        let seconds = 6;
-        if (this.transitionTimer) clearInterval(this.transitionTimer);
-        this.transitionTimer = setInterval(() => {
-          seconds--;
-          this.game.ui.updateStageClearedCountdown(seconds);
-          if (seconds <= 0) {
-            clearInterval(this.transitionTimer);
-            this.transitionTimer = null;
-            this.advanceToNextStage();
-          }
-        }, 1000);
+        this.transitionSecondsLeft = 6;
+        this.isShowingStageCleared = true;
       }, 1200);
     }
   }
@@ -417,10 +375,7 @@ export class TournamentManager {
    * Advances to next stage
    */
   advanceToNextStage() {
-    if (this.transitionTimer) {
-      clearInterval(this.transitionTimer);
-      this.transitionTimer = null;
-    }
+    this.isShowingStageCleared = false;
     this.game.ui.hideTournamentStageCleared();
 
     this.currentStageIndex++;
@@ -433,9 +388,9 @@ export class TournamentManager {
    * Skips the 30-second countdown immediately and starts the next independent tournament
    */
   skipPodiumTimerAndStartNext() {
-    if (this.podiumTransitionTimer) {
-      clearInterval(this.podiumTransitionTimer);
-      this.podiumTransitionTimer = null;
+    this.isShowingPodiumCountdown = false;
+    if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
+      this.game.recorder.stopAndSave(this.completedTournaments);
     }
     this.launchNewTournamentInstance();
   }
@@ -447,22 +402,16 @@ export class TournamentManager {
     this.isActive = false;
     this.isStageBattleActive = false;
     this.stageCleared = false;
+    this.isShowingIntro = false;
+    this.isShowingStageCleared = false;
+    this.isShowingPodiumCountdown = false;
     this.totalTournaments = 1;
     this.completedTournaments = 0;
-    if (this.podiumTransitionTimer) {
-      clearInterval(this.podiumTransitionTimer);
-      this.podiumTransitionTimer = null;
-    }
-    if (this.introTimer) {
-      clearInterval(this.introTimer);
-      this.introTimer = null;
-    }
-    if (this.transitionTimer) {
-      clearInterval(this.transitionTimer);
-      this.transitionTimer = null;
-    }
     if (this.game.recorder && this.game.recorder.isRecording) {
       this.game.recorder.stopAndSave(this.completedTournaments + 1);
+    }
+    if (this.game.recorder) {
+      this.game.recorder.stopAllStreams();
     }
     this.isRecordingEnabled = false;
     this.game.bombs.setTournamentMode(false);
@@ -475,11 +424,73 @@ export class TournamentManager {
   }
 
   /**
-   * Updates tournament timers during active stage battle
+   * Updates tournament timers and stages seamlessly in both foreground and background
    * @param {number} dt Delta time in seconds
    */
   update(dt) {
-    if (!this.isActive || !this.isStageBattleActive || this.stageCleared || this.game.state !== 'BATTLE') {
+    if (!this.isActive) return;
+
+    // 1. Stage Intro Showcase countdown
+    if (this.isShowingIntro) {
+      const prevSec = Math.ceil(this.introSecondsLeft);
+      this.introSecondsLeft -= dt;
+      const curSec = Math.max(0, Math.ceil(this.introSecondsLeft));
+      if (curSec !== prevSec) {
+        this.game.ui.updateTournamentIntroTimer(curSec);
+      }
+      if (this.introSecondsLeft <= 0) {
+        this.isShowingIntro = false;
+        this.launchStageBattle();
+      }
+      return;
+    }
+
+    // 2. Stage Cleared Transition countdown
+    if (this.isShowingStageCleared) {
+      const prevSec = Math.ceil(this.transitionSecondsLeft);
+      this.transitionSecondsLeft -= dt;
+      const curSec = Math.max(0, Math.ceil(this.transitionSecondsLeft));
+      if (curSec !== prevSec) {
+        this.game.ui.updateStageClearedCountdown(curSec);
+      }
+      if (this.transitionSecondsLeft <= 0) {
+        this.isShowingStageCleared = false;
+        this.advanceToNextStage();
+      }
+      return;
+    }
+
+    // 3. Podium Next Tournament countdown
+    if (this.isShowingPodiumCountdown) {
+      const prevSec = Math.ceil(this.podiumSecondsLeft);
+      this.podiumSecondsLeft -= dt;
+      const curSec = Math.max(0, Math.ceil(this.podiumSecondsLeft));
+      if (curSec !== prevSec) {
+        this.game.ui.updatePodiumNextCountdown(curSec);
+      }
+      if (this.podiumSecondsLeft <= 0) {
+        this.isShowingPodiumCountdown = false;
+        if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
+          this.game.recorder.stopAndSave(this.completedTournaments);
+        }
+        this.launchNewTournamentInstance();
+      }
+      return;
+    }
+
+    // 4. Final tournament podium celebration auto-save timer
+    if (this.finalPodiumSaveTimer !== undefined && this.finalPodiumSaveTimer > 0) {
+      this.finalPodiumSaveTimer -= dt;
+      if (this.finalPodiumSaveTimer <= 0) {
+        this.finalPodiumSaveTimer = 0;
+        if (this.isRecordingEnabled && this.game.recorder && this.game.recorder.isRecording) {
+          this.game.recorder.stopAndSave(this.completedTournaments);
+          this.game.recorder.stopAllStreams();
+        }
+      }
+    }
+
+    if (!this.isStageBattleActive || this.stageCleared || this.game.state !== 'BATTLE') {
       return;
     }
 

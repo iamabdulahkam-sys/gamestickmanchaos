@@ -17,6 +17,7 @@ import { BombManager } from './bomb.js';
 import { sound } from './audio.js';
 import { TournamentManager } from './tournament.js';
 import { GameRecorder } from './recorder.js';
+import { BackgroundTicker } from './ticker.js';
 
 export class GameManager {
   constructor(canvas) {
@@ -47,10 +48,20 @@ export class GameManager {
     this.weather = new WeatherManager();
     this.items = new ItemManager();
     this.bombs = new BombManager();
+    this.sound = sound;
     this.renderer = new Renderer(canvas);
     this.ui = new UIManager(this);
     this.tournament = new TournamentManager(this);
     this.recorder = new GameRecorder(this);
+    this.ticker = new BackgroundTicker((dt) => this.onBackgroundTick(dt));
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          this.lastTime = performance.now();
+        }
+      });
+    }
 
     this.fighters = [];
     this.lastTime = 0;
@@ -498,11 +509,39 @@ export class GameManager {
       this.ui.updateFPS(this.fps);
     }
 
+    // Only update and render via RAF if tab is currently visible in foreground
+    if (!this.ticker?.isBackground) {
+      if (!this.isPaused) {
+        this.update(dt);
+      }
+
+      // Always render current state with weather, items, and bombs
+      this.renderer.render(
+        this.physics,
+        this.fighters,
+        this.effects,
+        this.debugMode,
+        this.weather,
+        this.items,
+        this.bombs
+      );
+    }
+
+    requestAnimationFrame((t) => this.gameLoop(t));
+  }
+
+  /**
+   * Called by BackgroundTicker (Web Worker) at 60 FPS when tab is hidden.
+   * Continues physics, tournament timers, AI, and canvas rendering unthrottled.
+   */
+  onBackgroundTick(dt) {
+    if (!this.ticker?.isBackground) return;
+
     if (!this.isPaused) {
       this.update(dt);
     }
 
-    // Always render current state with weather, items, and bombs
+    // Keep rendering to canvas during background ticks so screen/tab capture remains active
     this.renderer.render(
       this.physics,
       this.fighters,
@@ -512,8 +551,6 @@ export class GameManager {
       this.items,
       this.bombs
     );
-
-    requestAnimationFrame((t) => this.gameLoop(t));
   }
 
   update(dt) {
@@ -526,15 +563,15 @@ export class GameManager {
     this.weather.update(dt, this.physics, this.fighters, this.effects, isBattleOver);
     if (this.recorder) this.recorder.update(dt);
 
+    // Tournament mode lifecycle updates (intros, countdowns, transitions, nature shifts)
+    if (this.tournament && this.tournament.isActive) {
+      this.tournament.update(dt);
+    }
+
     // 2. State specific updates
     if (this.state === 'BATTLE') {
       // Step Physics with fighters passed for anti-clump low-G buoyancy
       this.physics.update(dt, this.fighters);
-
-      // Tournament mode updates (dynamic in-match weather & nature shifts)
-      if (this.tournament) {
-        this.tournament.update(dt);
-      }
 
       // Item updates (periodic spawns, parachute fall, pickups)
       this.items.update(dt, this.physics, this.fighters, this.effects);
