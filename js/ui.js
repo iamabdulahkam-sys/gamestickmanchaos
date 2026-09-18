@@ -43,8 +43,6 @@ export class UIManager {
     this.tournamentSetupModal = document.getElementById('tournament-setup-modal');
     this.podiumCountdownBox = document.getElementById('podium-next-countdown-box');
     this.podiumNormalActions = document.getElementById('podium-normal-actions');
-    this.podiumCountdownNum = document.getElementById('podium-next-countdown-num');
-    this.podiumCountdownText = document.getElementById('podium-next-countdown-text');
 
     // 4K Screen Recorder elements
     this.recIndicator = document.getElementById('rec-indicator');
@@ -1560,15 +1558,9 @@ export class UIManager {
   }
 
   updatePodiumNextCountdown(seconds) {
-    const numEl = document.getElementById('podium-next-countdown-num');
-    const textEl = document.getElementById('podium-next-countdown-text');
-    const sec = Math.max(0, seconds);
-    if (numEl) {
-      numEl.textContent = sec;
-    }
-    if (textEl) {
-      textEl.textContent = `Next tournament starting automatically in ${sec} seconds...`;
-    }
+    // Countdown seconds and "next tournament" text removed per user preference:
+    // "1. tidak perlu ada berapa seconds lagi turnamen selanjutnya"
+    // "2. tidak perlu ada kata - kata tournament selanjutnya"
   }
 
   hideTournamentPodium() {

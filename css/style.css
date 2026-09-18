@@ -2826,14 +2826,6 @@ html, body {
   display: none !important;
 }
 
-.countdown-pulse-wrap {
-  animation: pulseTimer 1s ease-in-out infinite alternate;
-}
-
-@keyframes pulseTimer {
-  0% { transform: scale(1); box-shadow: 0 0 0 rgba(255, 215, 0, 0); }
-  100% { transform: scale(1.04); box-shadow: 0 0 15px rgba(255, 215, 0, 0.3); }
-}
 
 /* --------------------------------------------------------------------------
    In-Game 4K Screen Recorder Indicator & Controls
