@@ -70,6 +70,25 @@ window.addEventListener('DOMContentLoaded', () => {
 
   // Keyboard controls
   window.addEventListener('keydown', (e) => {
+    // Escape or Enter: Dismiss or advance from podium modal if active
+    if (e.code === 'Escape' || e.code === 'Enter') {
+      const podiumModal = document.getElementById('tournament-podium-modal');
+      if (podiumModal && podiumModal.classList.contains('active')) {
+        e.preventDefault();
+        if (game.tournament && game.tournament.isActive) {
+          if (game.tournament.isShowingPodiumCountdown) {
+            game.tournament.skipPodiumTimerAndStartNext();
+          } else {
+            game.ui.hideTournamentPodium();
+            game.tournament.exitTournament();
+          }
+        } else {
+          game.ui.hideTournamentPodium();
+        }
+        return;
+      }
+    }
+
     // Space: Pause/Resume
     if (e.code === 'Space') {
       e.preventDefault();

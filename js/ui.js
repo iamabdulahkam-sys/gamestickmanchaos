@@ -41,8 +41,7 @@ export class UIManager {
     this.tournamentClearedModal = document.getElementById('tournament-stage-cleared-modal');
     this.tournamentPodiumModal = document.getElementById('tournament-podium-modal');
     this.tournamentSetupModal = document.getElementById('tournament-setup-modal');
-    this.podiumCountdownBox = document.getElementById('podium-next-countdown-box');
-    this.podiumNormalActions = document.getElementById('podium-normal-actions');
+
 
     // 4K Screen Recorder elements
     this.recIndicator = document.getElementById('rec-indicator');
@@ -241,39 +240,20 @@ export class UIManager {
       });
     }
 
-    // Podium skip and stop actions
-    const btnPodiumSkip = document.getElementById('btn-podium-skip-timer');
-    if (btnPodiumSkip) {
-      btnPodiumSkip.addEventListener('click', () => {
-        if (this.game.tournament) {
-          this.game.tournament.skipPodiumTimerAndStartNext();
+    // Podium modal click to advance or return
+    if (this.tournamentPodiumModal) {
+      this.tournamentPodiumModal.addEventListener('click', () => {
+        if (!this.tournamentPodiumModal.classList.contains('active')) return;
+        if (this.game.tournament && this.game.tournament.isActive) {
+          if (this.game.tournament.isShowingPodiumCountdown) {
+            this.game.tournament.skipPodiumTimerAndStartNext();
+          } else {
+            this.hideTournamentPodium();
+            this.game.tournament.exitTournament();
+          }
+        } else {
+          this.hideTournamentPodium();
         }
-      });
-    }
-
-    const btnPodiumStop = document.getElementById('btn-podium-stop-series');
-    if (btnPodiumStop) {
-      btnPodiumStop.addEventListener('click', () => {
-        this.hideTournamentPodium();
-        if (this.game.tournament) {
-          this.game.tournament.exitTournament();
-        }
-      });
-    }
-
-    const btnPodiumRestart = document.getElementById('btn-podium-restart');
-    if (btnPodiumRestart) {
-      btnPodiumRestart.addEventListener('click', () => {
-        this.hideTournamentPodium();
-        this.showTournamentSetupModal();
-      });
-    }
-
-    const btnPodiumExit = document.getElementById('btn-podium-exit');
-    if (btnPodiumExit) {
-      btnPodiumExit.addEventListener('click', () => {
-        this.hideTournamentPodium();
-        if (this.game.tournament) this.game.tournament.exitTournament();
       });
     }
 
@@ -1533,42 +1513,18 @@ export class UIManager {
       </div>
     `;
 
-    // Toggle 30-second countdown box vs normal actions
-    if (this.podiumCountdownBox) {
-      if (hasNextTournament) {
-        this.podiumCountdownBox.classList.remove('hidden');
-      } else {
-        this.podiumCountdownBox.classList.add('hidden');
-      }
-    }
-
-    if (this.podiumNormalActions) {
-      if (hasNextTournament) {
-        this.podiumNormalActions.classList.add('hidden');
-      } else {
-        this.podiumNormalActions.classList.remove('hidden');
-      }
-    }
-
-    this.updatePodiumNextCountdown(secondsLeft);
-
     if (this.tournamentPodiumModal) {
       this.tournamentPodiumModal.classList.add('active');
     }
   }
 
   updatePodiumNextCountdown(seconds) {
-    // Countdown seconds and "next tournament" text removed per user preference:
-    // "1. tidak perlu ada berapa seconds lagi turnamen selanjutnya"
-    // "2. tidak perlu ada kata - kata tournament selanjutnya"
+    // Info turnamen selanjutnya & countdown seconds dihapus sesuai permintaan
   }
 
   hideTournamentPodium() {
     if (this.tournamentPodiumModal) {
       this.tournamentPodiumModal.classList.remove('active');
-    }
-    if (this.podiumCountdownBox) {
-      this.podiumCountdownBox.classList.add('hidden');
     }
   }
 }
