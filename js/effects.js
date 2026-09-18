@@ -269,6 +269,36 @@ export class EffectsManager {
     this.triggerScreenShake(5);
   }
 
+  /**
+   * Prominent dispersal shockwave triggered when >8 fighters cluster together
+   */
+  addCrowdShockwave(x, y, radius = 170) {
+    const scale = this.currentFighterScale || 1.0;
+    this.addShockwave(x, y, '#00F0FF', radius);
+    this.addShockwave(x, y, '#FFE600', radius * 0.65);
+    this.triggerScreenShake(7);
+
+    // Explicit comic popup text
+    this.addHitEffect(x, y, 'SCATTER!', true, scale);
+
+    // Cyan & golden energy sparks burst
+    const sparkCount = 14;
+    for (let i = 0; i < sparkCount; i++) {
+      const angle = (i / sparkCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      const speed = (3.5 + Math.random() * 4.5) * Math.max(0.7, scale);
+      this.particles.push(
+        new StarParticle(
+          x,
+          y,
+          Math.cos(angle) * speed,
+          Math.sin(angle) * speed,
+          ['#00F0FF', '#FFE600', '#FFFFFF'][i % 3],
+          scale * 1.2
+        )
+      );
+    }
+  }
+
   addHitEffect(x, y, text = null, isCriticalOrWeapon = false, customScale = null) {
     const scale = customScale || this.currentFighterScale || 1.0;
     const maxPopups = CONFIG.EFFECTS.MAX_ACTIVE_POPUPS || 7;

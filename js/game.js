@@ -72,6 +72,7 @@ export class GameManager {
     this.confettiTimer = 0;
     this.eliminationCounter = 0;
     this.teamEliminations = new Map();
+    this.crowdShockwaveCooldown = 0;
 
     this.setupPhysicsCallbacks();
   }
@@ -309,6 +310,7 @@ export class GameManager {
     this.confettiTimer = 0;
     this.eliminationCounter = 0;
     this.teamEliminations = new Map();
+    this.crowdShockwaveCooldown = 1.0;
     if (this.winnerTimeout) {
       clearTimeout(this.winnerTimeout);
       this.winnerTimeout = null;
@@ -573,6 +575,9 @@ export class GameManager {
       // Step Physics with fighters passed for anti-clump low-G buoyancy
       this.physics.update(dt, this.fighters);
 
+      // Check Crowd Shockwave to disperse dense clusters of >8 fighters (non-damaging)
+      this.checkCrowdShockwave(dt);
+
       // Item updates (periodic spawns, parachute fall, pickups)
       this.items.update(dt, this.physics, this.fighters, this.effects);
 
@@ -689,6 +694,135 @@ export class GameManager {
         this.ui.showWinner(winner);
       }, 1000);
     }
+  }
+
+  /**
+   * Evaluates crowd clustering. When >8 alive fighters gather in a tight clump,
+   * triggers a powerful non-damaging dispersal shockwave to scatter the mob.
+   */
+  checkCrowdShockwave(dt) {
+    if (this.state !== 'BATTLE') return;
+
+    if (this.crowdShockwaveCooldown > 0) {
+      this.crowdShockwaveCooldown -= dt;
+      return;
+    }
+
+    const aliveFighters = this.fighters.filter((f) => !f.isKO && f.body);
+    if (aliveFighters.length <= 8) return;
+
+    const fighterScale = aliveFighters[0]?.scale || 1.0;
+    // Clustering radius: scaled to fighter scale (~55px for 100 fighters, ~95px for 16 fighters)
+    const clusterRadius = Math.max(55, 100 * fighterScale);
+    const clusterRadiusSq = clusterRadius * clusterRadius;
+
+    let maxCluster = null;
+    let maxCount = 0;
+
+    for (let i = 0; i < aliveFighters.length; i++) {
+      const fi = aliveFighters[i];
+      const posI = fi.body.position;
+      const cluster = [fi];
+
+      for (let j = 0; j < aliveFighters.length; j++) {
+        if (i === j) continue;
+        const fj = aliveFighters[j];
+        const posJ = fj.body.position;
+        const dx = posI.x - posJ.x;
+        const dy = posI.y - posJ.y;
+        if (dx * dx + dy * dy <= clusterRadiusSq) {
+          cluster.push(fj);
+        }
+      }
+
+      if (cluster.length > 8 && cluster.length > maxCount) {
+        maxCount = cluster.length;
+        maxCluster = cluster;
+      }
+    }
+
+    if (maxCluster && maxCluster.length > 8) {
+      this.triggerCrowdDispersalShockwave(maxCluster, clusterRadius, aliveFighters);
+    }
+  }
+
+  /**
+   * Disperses a dense crowd of >8 fighters radially outward with a sonic shockwave.
+   * 100% NON-DAMAGING: Fighter HP is completely untouched!
+   */
+  triggerCrowdDispersalShockwave(cluster, clusterRadius, aliveFighters) {
+    // 1. Calculate centroid (center of mass) of the mob
+    let sumX = 0;
+    let sumY = 0;
+    for (let i = 0; i < cluster.length; i++) {
+      sumX += cluster[i].body.position.x;
+      sumY += cluster[i].body.position.y;
+    }
+    const cx = sumX / cluster.length;
+    const cy = sumY / cluster.length;
+
+    // 2. Trigger audiovisual shockwave effects
+    if (this.effects.addCrowdShockwave) {
+      this.effects.addCrowdShockwave(cx, cy, clusterRadius * 1.6);
+    } else {
+      this.effects.addShockwave(cx, cy, '#00F0FF', clusterRadius * 1.6);
+      this.effects.addHitEffect(cx, cy, 'SCATTER!', true);
+    }
+
+    if (this.sound && this.sound.playShockwave) {
+      this.sound.playShockwave();
+    } else if (this.sound && this.sound.playBumper) {
+      this.sound.playBumper();
+    }
+
+    // 3. Blast all fighters within the expanded shockwave radius radially outward
+    const blastRadius = clusterRadius * 1.55;
+    const blastRadiusSq = blastRadius * blastRadius;
+    const affected = aliveFighters.filter((f) => {
+      const dx = f.body.position.x - cx;
+      const dy = f.body.position.y - cy;
+      return dx * dx + dy * dy <= blastRadiusSq;
+    });
+
+    const baseImpulseSpeed = 13.0 * (this.physics.bounceMultiplier || 1.0);
+
+    for (let i = 0; i < affected.length; i++) {
+      const f = affected[i];
+      const pos = f.body.position;
+      let dx = pos.x - cx;
+      let dy = pos.y - cy;
+      let dist = Math.hypot(dx, dy);
+
+      if (dist < 1.0) {
+        const angle = Math.random() * Math.PI * 2;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+        dist = 1.0;
+      }
+
+      const nx = dx / dist;
+      const ny = dy / dist;
+
+      // Radially outwards with an upward pop (-2.5 to -4.5) to keep them airborne
+      const popY = -3.5 + (Math.random() - 0.5) * 1.5;
+      const speed = baseImpulseSpeed * (0.88 + Math.random() * 0.32);
+
+      this.physics.Body.setVelocity(f.body, {
+        x: nx * speed,
+        y: ny * (speed * 0.6) + popY,
+      });
+
+      this.physics.Body.setAngularVelocity(f.body, (Math.random() - 0.5) * 0.45);
+
+      // Cartoon hit flash & tumble reaction (WITHOUT REDUCING ANY HP)
+      f.hitFlashTimer = 0.16;
+      f.state = 'KNOCKED_BACK';
+      f.stunTimer = 0.22;
+      // CRITICAL: f.hp is NEVER modified! Zero damage!
+    }
+
+    // Cooldown prevents spamming shockwaves while fighters are already flying apart
+    this.crowdShockwaveCooldown = 1.8;
   }
 
   startTournament(count = 1, customCountries = null) {

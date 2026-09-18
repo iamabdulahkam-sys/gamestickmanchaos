@@ -647,6 +647,55 @@ class SoundManager {
     osc.start(t);
     osc.stop(t + 0.3);
   }
+
+  /**
+   * Powerful sonic dispersal shockwave sound (sub-bass impact + resonant whoosh)
+   */
+  playShockwave() {
+    this.ensureActive();
+    const master = this.createMasterGain();
+    if (!master) return;
+
+    const t = this.ctx.currentTime;
+
+    // 1. Sub-bass punch oscillator
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(160, t);
+    osc.frequency.exponentialRampToValueAtTime(32, t + 0.28);
+    oscGain.gain.setValueAtTime(0.85, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.01, t + 0.28);
+    osc.connect(oscGain);
+    oscGain.connect(master);
+    osc.start(t);
+    osc.stop(t + 0.28);
+
+    // 2. High resonant energy whoosh
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.25);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.3));
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1200, t);
+    filter.frequency.exponentialRampToValueAtTime(180, t + 0.25);
+    filter.Q.setValueAtTime(4.0, t);
+
+    const noiseGain = this.ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.7, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(master);
+    noise.start(t);
+  }
 }
 
 export const sound = new SoundManager();
