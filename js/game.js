@@ -523,7 +523,8 @@ export class GameManager {
         this.debugMode,
         this.weather,
         this.items,
-        this.bombs
+        this.bombs,
+        this
       );
     }
 
@@ -549,7 +550,8 @@ export class GameManager {
       this.debugMode,
       this.weather,
       this.items,
-      this.bombs
+      this.bombs,
+      this
     );
   }
 

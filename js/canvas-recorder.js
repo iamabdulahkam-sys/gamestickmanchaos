@@ -488,6 +488,13 @@ export class CanvasRecorder {
               <span>Capture Game Audio</span>
             </label>
           </div>
+
+          <div class="cr-setting-row">
+            <label class="cr-checkbox-label">
+              <input type="checkbox" id="cr-standings-check" checked>
+              <span>Record Live Standings</span>
+            </label>
+          </div>
         </div>
 
         <div id="cr-error-box" class="cr-error-box hidden"></div>
@@ -527,6 +534,7 @@ export class CanvasRecorder {
     const resSelect = widget.querySelector('#cr-res-select');
     const bitrateSelect = widget.querySelector('#cr-bitrate-select');
     const audioCheck = widget.querySelector('#cr-audio-check');
+    const standingsCheck = widget.querySelector('#cr-standings-check');
 
     pillBtn.addEventListener('click', () => {
       widget.classList.toggle('cr-collapsed');
@@ -552,6 +560,14 @@ export class CanvasRecorder {
     audioCheck.addEventListener('change', (e) => {
       this.config.includeAudio = e.target.checked;
     });
+
+    if (standingsCheck) {
+      standingsCheck.addEventListener('change', (e) => {
+        if (this.game?.renderer?.hud) {
+          this.game.renderer.hud.showStandings = e.target.checked;
+        }
+      });
+    }
   }
 
   updateTimerDisplay() {

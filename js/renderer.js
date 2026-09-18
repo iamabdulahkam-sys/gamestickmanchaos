@@ -5,6 +5,7 @@
  */
 
 import { CONFIG } from './config.js';
+import { CanvasHUD } from './canvas-hud.js';
 
 export class Renderer {
   constructor(canvas) {
@@ -15,6 +16,7 @@ export class Renderer {
     this.renderScale = 1.0;
     this.currentTheme = CONFIG.THEMES.neon;
     this.wallImpacts = []; // Visual wall impact rings
+    this.hud = new CanvasHUD(this);
   }
 
   setTheme(themeKey) {
@@ -35,6 +37,9 @@ export class Renderer {
   }
 
   update(dt) {
+    if (this.hud) {
+      this.hud.update(dt);
+    }
     for (let i = this.wallImpacts.length - 1; i >= 0; i--) {
       const imp = this.wallImpacts[i];
       imp.radius += dt * 75;
@@ -45,7 +50,7 @@ export class Renderer {
     }
   }
 
-  render(physics, fighters, effects, debugMode = false, weather = null, items = null, bombs = null) {
+  render(physics, fighters, effects, debugMode = false, weather = null, items = null, bombs = null, gameContext = null) {
     const { ctx, width, height } = this;
 
     // Reset transform to identity and clear entire physical pixel buffer
@@ -110,6 +115,11 @@ export class Renderer {
     }
 
     ctx.restore();
+
+    // 10. Draw In-Engine Canvas HUD & Overlays (Fighter HP Cards, Standings, Banner, Champion Card)
+    if (this.hud && gameContext) {
+      this.hud.render(ctx, width, height, gameContext);
+    }
   }
 
   drawBackground(ctx, width, height) {

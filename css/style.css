@@ -188,6 +188,7 @@ html, body {
    Dynamic External HUD Bands (Top & Bottom outside Arena)
    -------------------------------------------------------------------------- */
 .hud-band {
+  display: none !important;
   position: absolute;
   left: 16px;
   right: 16px;
