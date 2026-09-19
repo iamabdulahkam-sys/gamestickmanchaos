@@ -439,27 +439,77 @@ export class CanvasHUD {
   // 3. LIVE STANDINGS (KLASEMEN) PANEL
   // ==========================================================================
   drawStandings(ctx, width, height, game) {
-    const fighters = [...game.fighters];
-    // Sort: Alive fighters first by HP desc, then KO fighters by eliminationOrder desc
-    fighters.sort((a, b) => {
-      if (!a.isKO && b.isKO) return -1;
-      if (a.isKO && !b.isKO) return 1;
-      if (!a.isKO && !b.isKO) return (b.hp || 0) - (a.hp || 0);
-      return (b.eliminationOrder || 0) - (a.eliminationOrder || 0);
-    });
+    // 1. Obtain full standings grouped by country
+    let list = game.getStandings ? game.getStandings() : [];
+    if (!list || list.length === 0) {
+      // Fallback to fighters if getStandings is empty
+      const fighters = [...game.fighters];
+      fighters.sort((a, b) => {
+        if (!a.isKO && b.isKO) return -1;
+        if (a.isKO && !b.isKO) return 1;
+        if (!a.isKO && !b.isKO) return (b.hp || 0) - (a.hp || 0);
+        return (b.eliminationOrder || 0) - (a.eliminationOrder || 0);
+      });
+      list = fighters.map((f) => ({
+        country: f.country,
+        name: f.name || f.country?.name,
+        isAlive: !f.isKO,
+        totalHp: f.hp || 0,
+        maxHp: f.maxHp || 250,
+        hpPercent: f.maxHp > 0 ? ((f.hp || 0) / f.maxHp) * 100 : 0,
+      }));
+    }
 
-    const displayCount = Math.min(fighters.length, 8);
-    const panelX = 20;
-    const panelY = 90;
-    const panelW = 230;
-    const rowH = 26;
-    const headerH = 34;
-    const panelH = headerH + displayCount * rowH + 10;
+    const total = list.length;
+    if (total === 0) return;
+
+    // 2. Count alive countries
+    const aliveCount = list.filter((item) => item.isAlive).length;
+
+    // 3. Adaptive multi-column sizing to fit all countries cleanly
+    let numCols = 1;
+    let rowsPerCol = total;
+    let colW = 230;
+    let rowH = 24;
+    let panelW = 244;
+    const headerH = 32;
+
+    if (total <= 10) {
+      numCols = 1;
+      rowsPerCol = total;
+      colW = 230;
+      rowH = 24;
+      panelW = 244;
+    } else if (total <= 18) {
+      numCols = 1;
+      rowsPerCol = total;
+      colW = 230;
+      rowH = 20;
+      panelW = 244;
+    } else if (total <= 32) {
+      numCols = 2;
+      rowsPerCol = Math.ceil(total / 2);
+      colW = 126;
+      rowH = 18.5;
+      panelW = colW * 2 + 18; // 270px
+    } else {
+      // 33 to 64 countries (e.g. Round of 64)
+      numCols = 2;
+      rowsPerCol = Math.ceil(total / 2); // 32 rows
+      colW = 128;
+      rowH = 17.5;
+      panelW = colW * 2 + 18; // 274px
+    }
+
+    const panelX = 14;
+    const panelH = headerH + rowsPerCol * rowH + 8;
+    // Keep panel comfortably positioned within vertical bounds
+    const panelY = Math.max(52, Math.min(68, (height - panelH) / 2));
 
     ctx.save();
 
     // Backdrop shadow and panel
-    ctx.fillStyle = 'rgba(10, 14, 26, 0.92)';
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.94)';
     ctx.beginPath();
     this.roundRect(ctx, panelX, panelY, panelW, panelH, 12);
     ctx.fill();
@@ -483,70 +533,115 @@ export class CanvasHUD {
     ctx.fillText('📊  STANDINGS', panelX + 12, panelY + headerH / 2);
 
     // Alive Count Badge
-    const aliveCount = fighters.filter((f) => !f.isKO).length;
-    const aliveBadgeText = `${aliveCount} ALIVE`;
+    const aliveBadgeText = `${aliveCount}/${total} ALIVE`;
     ctx.font = 'bold 9.5px "Segoe UI", sans-serif';
-    ctx.fillStyle = 'rgba(52, 199, 89, 0.25)';
-    const badgeW = 56;
-    const badgeX = panelX + panelW - badgeW - 10;
-    const badgeY = panelY + headerH / 2 - 8;
+    ctx.fillStyle = aliveCount > 0 ? 'rgba(52, 199, 89, 0.25)' : 'rgba(255, 59, 48, 0.25)';
+    const badgeW = Math.max(68, ctx.measureText(aliveBadgeText).width + 14);
+    const badgeX = panelX + panelW - badgeW - 8;
+    const badgeY = panelY + headerH / 2 - 9;
     ctx.beginPath();
-    this.roundRect(ctx, badgeX, badgeY, badgeW, 16, 4);
+    this.roundRect(ctx, badgeX, badgeY, badgeW, 18, 4);
     ctx.fill();
 
-    ctx.fillStyle = '#34C759';
+    ctx.fillStyle = aliveCount > 0 ? '#34C759' : '#FF3B30';
     ctx.textAlign = 'center';
-    ctx.fillText(aliveBadgeText, badgeX + badgeW / 2, badgeY + 8);
+    ctx.fillText(aliveBadgeText, badgeX + badgeW / 2, badgeY + 9);
 
-    // Render Rows
-    for (let i = 0; i < displayCount; i++) {
-      const f = fighters[i];
-      const rowY = panelY + headerH + 6 + i * rowH;
-      const isKO = Boolean(f.isKO);
+    // Divider line between columns if numCols === 2
+    if (numCols === 2) {
+      const divX = panelX + 8 + colW + 1;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(divX, panelY + headerH + 4);
+      ctx.lineTo(divX, panelY + panelH - 6);
+      ctx.stroke();
+    }
 
-      // Rank number
-      ctx.font = 'bold 10px "Courier New", monospace';
-      ctx.fillStyle = i === 0 ? '#FFD700' : isKO ? '#64748B' : '#E2E8F0';
+    // Render All Country Rows
+    for (let i = 0; i < total; i++) {
+      const entry = list[i];
+      const colIdx = Math.floor(i / rowsPerCol);
+      const rowIdx = i % rowsPerCol;
+
+      const colStartX = panelX + 8 + colIdx * (colW + 2);
+      const rowY = panelY + headerH + 4 + rowIdx * rowH;
+      const isAlive = entry.isAlive;
+      const rank = i + 1;
+
+      // 1. Rank Number
+      ctx.font = numCols === 2 ? 'bold 9px "Courier New", monospace' : 'bold 10px "Courier New", monospace';
+      ctx.fillStyle = !isAlive
+        ? '#64748B'
+        : rank === 1
+        ? '#FFD700'
+        : rank === 2
+        ? '#C0C0C0'
+        : rank === 3
+        ? '#CD7F32'
+        : '#E2E8F0';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(`#${i + 1}`, panelX + 10, rowY + rowH / 2);
+      const rankStr = `#${rank}`;
+      ctx.fillText(rankStr, colStartX + 2, rowY + rowH / 2);
 
-      // Flag icon
-      const flagR = 7.5;
-      const flagCx = panelX + 38;
+      const rankW = numCols === 2 ? 18 : 22;
+
+      // 2. Flag icon
+      const flagR = numCols === 2 ? 5.5 : 7;
+      const flagCx = colStartX + rankW + flagR + 2;
       const flagCy = rowY + rowH / 2;
-      if (f.country) {
-        Flags.drawFlagHead(ctx, f.country, flagCx, flagCy, flagR);
+      if (entry.country) {
+        if (!isAlive) ctx.globalAlpha = 0.55;
+        Flags.drawFlagHead(ctx, entry.country, flagCx, flagCy, flagR);
+        ctx.globalAlpha = 1.0;
       }
 
-      // Fighter Name
-      ctx.font = 'bold 10.5px "Segoe UI", sans-serif';
-      ctx.fillStyle = isKO ? '#64748B' : '#F8FAFC';
-      const rawName = f.name || f.country?.name || 'Fighter';
-      const name = rawName.length > 10 ? rawName.substring(0, 9) + '…' : rawName;
-      ctx.fillText(name, flagCx + flagR + 8, rowY + rowH / 2);
+      // 3. Country Name
+      const nameX = flagCx + flagR + 4;
+      const rawName = entry.country?.name || entry.name || 'Country';
+      const maxChars = numCols === 2 ? 6 : 11;
+      const displayName = rawName.length > maxChars ? rawName.substring(0, maxChars - 1) + '…' : rawName;
 
-      // Mini HP bar or Status
-      if (isKO) {
-        ctx.font = 'bold 9px "Segoe UI", sans-serif';
-        ctx.fillStyle = '#FF3B30';
+      ctx.font = numCols === 2 ? 'bold 9px "Segoe UI", sans-serif' : 'bold 10px "Segoe UI", sans-serif';
+      ctx.fillStyle = isAlive ? '#F8FAFC' : '#64748B';
+      ctx.textAlign = 'left';
+      ctx.fillText(displayName, nameX, rowY + rowH / 2);
+
+      // Subtle strikethrough for OUT countries
+      if (!isAlive) {
+        const nameW = ctx.measureText(displayName).width;
+        ctx.strokeStyle = '#EF4444';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(nameX - 1, rowY + rowH / 2);
+        ctx.lineTo(nameX + nameW + 1, rowY + rowH / 2);
+        ctx.stroke();
+      }
+
+      // 4. Status Indicator (ALIVE HP Bar vs OUT Badge)
+      if (!isAlive) {
+        // Red OUT badge
+        ctx.font = '900 8px "Segoe UI", Impact, sans-serif';
+        ctx.fillStyle = '#EF4444';
         ctx.textAlign = 'right';
-        ctx.fillText('KO', panelX + panelW - 12, rowY + rowH / 2);
+        ctx.fillText('OUT', colStartX + colW - 4, rowY + rowH / 2);
       } else {
-        const miniBarW = 40;
-        const miniBarH = 5;
-        const miniBarX = panelX + panelW - miniBarW - 12;
-        const miniBarY = rowY + rowH / 2 - miniBarH / 2;
-        const ratio = Math.max(0, Math.min(1, (f.hp || 0) / (f.maxHp || 250)));
+        // Mini dynamic HP Bar
+        const barW = numCols === 2 ? 22 : 36;
+        const barH = numCols === 2 ? 3.5 : 4.5;
+        const barX = colStartX + colW - barW - 4;
+        const barY = rowY + rowH / 2 - barH / 2;
+        const ratio = Math.max(0, Math.min(1, (entry.hpPercent || 0) / 100));
 
         ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
         ctx.beginPath();
-        this.roundRect(ctx, miniBarX, miniBarY, miniBarW, miniBarH, 2.5);
+        this.roundRect(ctx, barX, barY, barW, barH, 2);
         ctx.fill();
 
-        ctx.fillStyle = ratio > 0.5 ? '#34C759' : ratio > 0.25 ? '#FFCC00' : '#FF3B30';
+        ctx.fillStyle = ratio > 0.5 ? '#22C55E' : ratio > 0.25 ? '#F59E0B' : '#EF4444';
         ctx.beginPath();
-        this.roundRect(ctx, miniBarX, miniBarY, Math.max(2, miniBarW * ratio), miniBarH, 2.5);
+        this.roundRect(ctx, barX, barY, Math.max(2, barW * ratio), barH, 2);
         ctx.fill();
       }
     }

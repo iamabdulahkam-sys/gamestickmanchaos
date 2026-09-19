@@ -163,6 +163,7 @@ export class GameManager {
   }
 
   setArenaShape(shapeKey) {
+    if (shapeKey === 'rectangle_full') shapeKey = 'rectangle';
     this.arenaShape = shapeKey || 'octagon';
     let r = CONFIG.ARENA.DEFAULT_RADIUS;
     if (this.arenaSize === 'small') r = CONFIG.ARENA.DEFAULT_RADIUS * 0.8;

@@ -541,11 +541,17 @@ html, body {
   border-color: rgba(0, 240, 255, 0.25);
 }
 
-.klasemen-row.is-ko {
+.klasemen-row.is-ko,
+.klasemen-row.is-out {
   opacity: 0.42;
   filter: grayscale(0.7);
   background: rgba(18, 20, 32, 0.4);
   border-color: rgba(255, 255, 255, 0.04);
+}
+
+.klasemen-row.is-out .klasemen-country-name {
+  text-decoration: line-through;
+  color: #94a3b8;
 }
 
 /* Rank Medals & Badges */

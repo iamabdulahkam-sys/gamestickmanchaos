@@ -89,7 +89,7 @@ export class TournamentManager {
    * Generates randomized arena, obstacle, gravity, weather & wind conditions for a stage
    */
   generateRandomConditions() {
-    const shapes = ['octagon', 'rectangle_full', 'rectangle', 'star', 'circle'];
+    const shapes = ['octagon', 'rectangle', 'star', 'circle'];
     const themes = ['neon', 'comic', 'cosmic', 'volcano', 'dojo'];
     const obstacles = ['none', 'bumper', 'pillars', 'platform', 'spinner'];
     const gravities = ['normal', 'float', 'zerog', 'wave'];

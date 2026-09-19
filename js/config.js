@@ -32,11 +32,6 @@ export const CONFIG = {
       name: 'Octagon Ring (8-Sided)',
       description: 'The classic 8-sided battle ring with corner rebounds.',
     },
-    rectangle_full: {
-      id: 'rectangle_full',
-      name: 'Full Screen Rectangle',
-      description: 'Maximum play area covering the entire screen boundaries.',
-    },
     rectangle: {
       id: 'rectangle',
       name: 'Boxing / Wrestling Ring',

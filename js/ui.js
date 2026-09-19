@@ -1085,13 +1085,13 @@ export class UIManager {
 
       // 4. Status Badge & Row Dimming
       if (item.isAlive) {
-        rowData.rowEl.classList.remove('is-ko');
+        rowData.rowEl.classList.remove('is-ko', 'is-out');
         rowData.statusBadgeEl.textContent = item.totalCount > 1 ? `${item.aliveCount} ALIVE` : 'ALIVE';
         rowData.statusBadgeEl.className = 'klasemen-status alive';
       } else {
-        rowData.rowEl.classList.add('is-ko');
-        rowData.statusBadgeEl.textContent = 'KO';
-        rowData.statusBadgeEl.className = 'klasemen-status ko';
+        rowData.rowEl.classList.add('is-ko', 'is-out');
+        rowData.statusBadgeEl.textContent = 'OUT';
+        rowData.statusBadgeEl.className = 'klasemen-status ko is-out';
       }
 
       // 5. Append child moves existing element to matching standings rank in DOM seamlessly
