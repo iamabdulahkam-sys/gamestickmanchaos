@@ -667,7 +667,7 @@ export class GameManager {
         const f = this.fighters[i];
         if (!aliveCountryIds.has(f.country.id) && !f.country.teamAnnouncedOut) {
           f.country.teamAnnouncedOut = true;
-          this.ui.showTeamEliminatedAnnounce(f.country.name);
+          this.ui.showTeamEliminatedAnnounce(f.country);
         }
       }
     }

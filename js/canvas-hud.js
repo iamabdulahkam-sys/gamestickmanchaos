@@ -20,6 +20,16 @@ export class CanvasHUD {
     this.flagImages = new Map();
     this.interactiveButtons = [];
 
+    // In-Engine Canvas Announcer State (Countdown 3-2-1, Country Out, KO, Weather Alerts)
+    this.announcer = {
+      text: '',
+      subText: '',
+      type: 'none', // 'countdown', 'fight', 'team_out', 'ko', 'nature'
+      country: null,
+      timer: 0,
+      duration: 0.8,
+    };
+
     this.initFlagImages();
 
     if (this.renderer?.canvas) {
@@ -37,6 +47,14 @@ export class CanvasHUD {
 
   update(dt) {
     this.pulseTime += dt;
+    if (this.announcer && this.announcer.timer > 0) {
+      this.announcer.timer -= dt;
+      if (this.announcer.timer <= 0) {
+        this.announcer.type = 'none';
+        this.announcer.text = '';
+        this.announcer.country = null;
+      }
+    }
   }
 
   /**
@@ -158,6 +176,9 @@ export class CanvasHUD {
       }
     }
 
+    // 5. Draw In-Engine Announcer (Countdown 3-2-1-FIGHT!, Country Out, KO, Weather Shifts)
+    this.drawAnnouncer(ctx, width, height, game);
+
     ctx.restore();
   }
 
@@ -173,10 +194,56 @@ export class CanvasHUD {
 
     const text = sub ? `${title}  •  ${sub}` : title;
 
+    // Active weather condition badge for tournament
+    const weatherType = tournament.stageConditions?.weatherType || tournament.game?.weather?.type || 'none';
+    let weatherText = '☀️ CLEAR';
+    let weatherColor = '#94A3B8';
+    let weatherBg = 'rgba(148, 163, 184, 0.18)';
+    let weatherBorder = 'rgba(148, 163, 184, 0.4)';
+    switch (weatherType) {
+      case 'rain':
+        weatherText = '🌧️ RAIN';
+        weatherColor = '#38BDF8';
+        weatherBg = 'rgba(56, 189, 248, 0.22)';
+        weatherBorder = 'rgba(56, 189, 248, 0.55)';
+        break;
+      case 'wind':
+        const wStr = tournament.stageConditions?.windStrength ? ` - ${tournament.stageConditions.windStrength.toUpperCase()}` : '';
+        weatherText = `💨 WIND${wStr}`;
+        weatherColor = '#2DD4BF';
+        weatherBg = 'rgba(45, 212, 191, 0.22)';
+        weatherBorder = 'rgba(45, 212, 191, 0.55)';
+        break;
+      case 'lightning':
+        weatherText = '⚡ THUNDER';
+        weatherColor = '#FBBF24';
+        weatherBg = 'rgba(251, 191, 36, 0.22)';
+        weatherBorder = 'rgba(251, 191, 36, 0.55)';
+        break;
+      case 'chaos':
+        weatherText = '🌀 CHAOS';
+        weatherColor = '#F472B6';
+        weatherBg = 'rgba(244, 114, 182, 0.22)';
+        weatherBorder = 'rgba(244, 114, 182, 0.55)';
+        break;
+      default:
+        weatherText = '☀️ CLEAR';
+        weatherColor = '#94A3B8';
+        weatherBg = 'rgba(148, 163, 184, 0.18)';
+        weatherBorder = 'rgba(148, 163, 184, 0.4)';
+        break;
+    }
+
     ctx.save();
     ctx.font = 'bold 13px "Segoe UI", -apple-system, sans-serif';
     const textMetrics = ctx.measureText(text);
-    const bannerWidth = Math.max(220, textMetrics.width + 48);
+
+    ctx.font = 'bold 11px "Segoe UI", -apple-system, sans-serif';
+    const weatherMetrics = ctx.measureText(weatherText);
+    const weatherPillW = weatherMetrics.width + 16;
+    const weatherPillH = 20;
+
+    const bannerWidth = Math.max(260, textMetrics.width + weatherPillW + 54);
     const bannerHeight = 28;
     const bannerX = width / 2 - bannerWidth / 2;
     const bannerY = 16;
@@ -198,11 +265,31 @@ export class CanvasHUD {
     ctx.arc(bannerX + 16, bannerY + bannerHeight / 2, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Text
+    // Stage Text
+    ctx.font = 'bold 13px "Segoe UI", -apple-system, sans-serif';
     ctx.fillStyle = '#FFD700';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(text, bannerX + 28, bannerY + bannerHeight / 2);
+
+    // Weather Pill Badge on right side of banner
+    const pillX = bannerX + bannerWidth - weatherPillW - 8;
+    const pillY = bannerY + (bannerHeight - weatherPillH) / 2;
+
+    ctx.fillStyle = weatherBg;
+    ctx.beginPath();
+    this.roundRect(ctx, pillX, pillY, weatherPillW, weatherPillH, 10);
+    ctx.fill();
+
+    ctx.strokeStyle = weatherBorder;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    ctx.font = 'bold 11px "Segoe UI", -apple-system, sans-serif';
+    ctx.fillStyle = weatherColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(weatherText, pillX + weatherPillW / 2, pillY + weatherPillH / 2);
 
     ctx.restore();
   }
@@ -1336,6 +1423,332 @@ export class CanvasHUD {
         }
       },
     });
+
+    ctx.restore();
+  }
+
+  // ==========================================================================
+  // IN-ENGINE ANNOUNCER (COUNTDOWN, COUNTRY OUT, KO, WEATHER SHIFTS)
+  // ==========================================================================
+  showCountdown(text, isFight = false) {
+    const dur = isFight ? 1.1 : 0.75;
+    this.announcer = {
+      text: String(text),
+      subText: isFight ? 'CLASH!' : '',
+      type: isFight ? 'fight' : 'countdown',
+      country: null,
+      timer: dur,
+      duration: dur,
+    };
+  }
+
+  showTeamEliminated(countryOrName) {
+    let country = null;
+    let countryName = '';
+
+    if (typeof countryOrName === 'object' && countryOrName !== null) {
+      country = countryOrName;
+      countryName = country.name || country.id || 'Country';
+    } else if (typeof countryOrName === 'string') {
+      countryName = countryOrName;
+      country =
+        CONFIG.COUNTRIES.find(
+          (c) =>
+            c.name.toLowerCase() === countryName.toLowerCase() ||
+            c.id.toLowerCase() === countryName.toLowerCase()
+        ) || null;
+    }
+
+    const dur = 1.35;
+    this.announcer = {
+      text: `${countryName.toUpperCase()} OUT!`,
+      subText: 'ELIMINATED',
+      type: 'team_out',
+      country: country,
+      timer: dur,
+      duration: dur,
+    };
+  }
+
+  showKO(fighterName) {
+    const dur = 1.25;
+    this.announcer = {
+      text: `${String(fighterName).toUpperCase()} OUT!`,
+      subText: 'KNOCKED OUT',
+      type: 'ko',
+      country: null,
+      timer: dur,
+      duration: dur,
+    };
+  }
+
+  showNatureAlert(text) {
+    const dur = 1.8;
+    this.announcer = {
+      text: String(text).toUpperCase(),
+      subText: 'WEATHER SHIFT',
+      type: 'nature',
+      country: null,
+      timer: dur,
+      duration: dur,
+    };
+  }
+
+  drawAnnouncer(ctx, width, height, game) {
+    if (!this.announcer || this.announcer.timer <= 0 || !this.announcer.text) return;
+
+    const { text, subText, type, country, timer, duration } = this.announcer;
+    const elapsed = Math.max(0, duration - timer);
+
+    ctx.save();
+
+    if (type === 'countdown') {
+      // Scale punch: 1.45 -> 1.0
+      const progress = Math.min(1, elapsed / 0.12);
+      const scale = 1.45 - progress * 0.45;
+      const alpha = timer < 0.15 ? timer / 0.15 : 1.0;
+
+      const cx = width / 2;
+      const cy = height * 0.42;
+
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      // Outer radial aura
+      const aura = ctx.createRadialGradient(0, 0, 10, 0, 0, 110);
+      aura.addColorStop(0, 'rgba(255, 230, 0, 0.48)');
+      aura.addColorStop(0.55, 'rgba(255, 180, 0, 0.18)');
+      aura.addColorStop(1, 'rgba(255, 180, 0, 0)');
+      ctx.fillStyle = aura;
+      ctx.beginPath();
+      ctx.arc(0, 0, 110, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bold Comic Number
+      ctx.font = '900 110px "Segoe UI", Impact, "Arial Black", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Thick black cartoon stroke
+      ctx.lineWidth = 14;
+      ctx.strokeStyle = '#000000';
+      ctx.lineJoin = 'round';
+      ctx.strokeText(text, 0, 0);
+
+      // Yellow energy gradient fill
+      const grad = ctx.createLinearGradient(0, -55, 0, 45);
+      grad.addColorStop(0, '#FFFF88');
+      grad.addColorStop(0.45, '#FFE600');
+      grad.addColorStop(1, '#FF9900');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#FFE600';
+      ctx.shadowBlur = 24;
+      ctx.fillText(text, 0, 0);
+
+    } else if (type === 'fight') {
+      // Explosive scale: 1.6 -> 1.0
+      const progress = Math.min(1, elapsed / 0.14);
+      const scale = 1.6 - progress * 0.6;
+      const alpha = timer < 0.22 ? timer / 0.22 : 1.0;
+
+      const cx = width / 2;
+      const cy = height * 0.42;
+
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      // Dramatic explosive shockwave aura
+      const flash = ctx.createRadialGradient(0, 0, 20, 0, 0, 180);
+      flash.addColorStop(0, 'rgba(255, 46, 147, 0.58)');
+      flash.addColorStop(0.5, 'rgba(255, 23, 68, 0.22)');
+      flash.addColorStop(1, 'rgba(255, 0, 60, 0)');
+      ctx.fillStyle = flash;
+      ctx.beginPath();
+      ctx.arc(0, 0, 180, 0, Math.PI * 2);
+      ctx.fill();
+
+      // FIGHT! Text
+      ctx.font = '900 120px "Segoe UI", Impact, "Arial Black", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Black outline
+      ctx.lineWidth = 16;
+      ctx.strokeStyle = '#000000';
+      ctx.lineJoin = 'round';
+      ctx.strokeText('FIGHT!', 0, 0);
+
+      // Vibrant Pink / Crimson comic gradient
+      const grad = ctx.createLinearGradient(0, -60, 0, 50);
+      grad.addColorStop(0, '#FF88DD');
+      grad.addColorStop(0.4, '#FF1744');
+      grad.addColorStop(1, '#FF7700');
+      ctx.fillStyle = grad;
+      ctx.shadowColor = '#FF2E93';
+      ctx.shadowBlur = 32;
+      ctx.fillText('FIGHT!', 0, 0);
+
+    } else if (type === 'team_out') {
+      // Pop-in scale: 0.85 -> 1.0
+      const progress = Math.min(1, elapsed / 0.12);
+      const scale = 0.85 + progress * 0.15;
+      const alpha = timer < 0.25 ? timer / 0.25 : 1.0;
+
+      const cx = width / 2;
+      const cy = height * 0.44;
+
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      // Font for measurement
+      ctx.font = '900 36px "Segoe UI", Impact, "Arial Black", sans-serif';
+      const textMetrics = ctx.measureText(text);
+
+      const flagW = country ? 48 : 0;
+      const flagH = 32;
+      const gap = country ? 16 : 0;
+      const contentW = flagW + gap + textMetrics.width;
+      const bannerW = Math.max(340, contentW + 48);
+      const bannerH = 68;
+      const bannerX = -bannerW / 2;
+      const bannerY = -bannerH / 2;
+
+      // Translucent comic banner background
+      ctx.fillStyle = 'rgba(18, 10, 22, 0.94)';
+      ctx.beginPath();
+      this.roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 16);
+      ctx.fill();
+
+      // Intense Crimson Red glow and border
+      ctx.strokeStyle = '#FF1744';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#FF1744';
+      ctx.shadowBlur = 18;
+      ctx.stroke();
+
+      // Reset shadow for content
+      ctx.shadowBlur = 0;
+
+      const startContentX = -contentW / 2;
+
+      // Draw Flag if country object available
+      if (country) {
+        const flagX = startContentX;
+        const flagY = -flagH / 2;
+        this.drawFlag(ctx, country, flagX, flagY, flagW, flagH, 3);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
+
+      // Draw "[COUNTRY] OUT!" text
+      const textX = startContentX + flagW + gap;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#000000';
+      ctx.strokeText(text, textX, -6);
+
+      ctx.fillStyle = '#FF3366';
+      ctx.fillText(text, textX, -6);
+
+      // Sub-badge: "ELIMINATED"
+      ctx.font = 'bold 11px "Segoe UI", sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.fillText('ELIMINATED', textX, 16);
+
+    } else if (type === 'ko') {
+      // Fighter KO banner
+      const progress = Math.min(1, elapsed / 0.12);
+      const scale = 0.85 + progress * 0.15;
+      const alpha = timer < 0.25 ? timer / 0.25 : 1.0;
+
+      const cx = width / 2;
+      const cy = height * 0.44;
+
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      ctx.font = '900 34px "Segoe UI", Impact, "Arial Black", sans-serif';
+      const textMetrics = ctx.measureText(text);
+      const bannerW = Math.max(300, textMetrics.width + 48);
+      const bannerH = 64;
+      const bannerX = -bannerW / 2;
+      const bannerY = -bannerH / 2;
+
+      ctx.fillStyle = 'rgba(22, 10, 14, 0.94)';
+      ctx.beginPath();
+      this.roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 16);
+      ctx.fill();
+
+      ctx.strokeStyle = '#FF3366';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#FF3366';
+      ctx.shadowBlur = 18;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = '#000000';
+      ctx.strokeText(text, 0, -6);
+      ctx.fillStyle = '#FF3366';
+      ctx.fillText(text, 0, -6);
+
+      ctx.font = 'bold 11px "Segoe UI", sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.fillText('KNOCKED OUT', 0, 16);
+
+    } else if (type === 'nature') {
+      // Dynamic weather alert banner
+      const progress = Math.min(1, elapsed / 0.12);
+      const scale = 0.88 + progress * 0.12;
+      const alpha = timer < 0.25 ? timer / 0.25 : 1.0;
+
+      const cx = width / 2;
+      const cy = height * 0.44;
+
+      ctx.translate(cx, cy);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      ctx.font = '900 30px "Segoe UI", Impact, "Arial Black", sans-serif';
+      const textMetrics = ctx.measureText(text);
+      const bannerW = Math.max(320, textMetrics.width + 56);
+      const bannerH = 64;
+      const bannerX = -bannerW / 2;
+      const bannerY = -bannerH / 2;
+
+      ctx.fillStyle = 'rgba(6, 18, 28, 0.94)';
+      ctx.beginPath();
+      this.roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 16);
+      ctx.fill();
+
+      ctx.strokeStyle = '#00F0FF';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = '#00F0FF';
+      ctx.shadowBlur = 20;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#000000';
+      ctx.strokeText(text, 0, -6);
+      ctx.fillStyle = '#00F0FF';
+      ctx.fillText(text, 0, -6);
+
+      ctx.font = 'bold 11px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#A5F3FC';
+      ctx.fillText('ENVIRONMENTAL SHIFT', 0, 15);
+    }
 
     ctx.restore();
   }

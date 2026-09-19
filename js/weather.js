@@ -101,15 +101,15 @@ export class WeatherManager {
 
     // 1. Rain Update
     if (activeMode === 'rain' || (this.type === 'chaos' && activeMode === 'rain')) {
-      if (this.raindrops.length < 90) {
-        for (let i = 0; i < 4; i++) {
+      if (this.raindrops.length < 160) {
+        for (let i = 0; i < 6; i++) {
           this.raindrops.push({
-            x: Math.random() * CONFIG.CANVAS.WIDTH * 1.2 - 100,
-            y: -20,
-            vx: -3 + Math.random() * 1.5,
-            vy: 24 + Math.random() * 8,
-            len: 14 + Math.random() * 8,
-            alpha: 0.35 + Math.random() * 0.35,
+            x: Math.random() * CONFIG.CANVAS.WIDTH * 1.3 - 150,
+            y: -30,
+            vx: -3.5 + Math.random() * 1.5,
+            vy: 26 + Math.random() * 9,
+            len: 18 + Math.random() * 12,
+            alpha: 0.45 + Math.random() * 0.4,
           });
         }
       }
@@ -119,14 +119,16 @@ export class WeatherManager {
         drop.x += drop.vx * dt * 60;
         drop.y += drop.vy * dt * 60;
 
-        if (drop.y > physics.center.y - 120 + Math.random() * 240) {
-          if (this.ripples.length < 35 && Math.random() < 0.35) {
+        // Splashes at arena floor and lower boundary rather than cutting off in mid-air
+        const groundThreshold = physics.center.y + (physics.radius || 280) * (0.65 + Math.random() * 0.35);
+        if (drop.y > groundThreshold || drop.y > CONFIG.CANVAS.HEIGHT - 40) {
+          if (this.ripples.length < 45 && Math.random() < 0.4) {
             this.ripples.push({
               x: drop.x,
-              y: drop.y,
+              y: Math.min(drop.y, groundThreshold),
               radius: 2,
-              maxRadius: 8 + Math.random() * 6,
-              alpha: 0.5,
+              maxRadius: 10 + Math.random() * 8,
+              alpha: 0.65,
             });
           }
           this.raindrops.splice(i, 1);
@@ -135,8 +137,8 @@ export class WeatherManager {
 
       for (let i = this.ripples.length - 1; i >= 0; i--) {
         const r = this.ripples[i];
-        r.radius += dt * 24;
-        r.alpha -= dt * 1.8;
+        r.radius += dt * 28;
+        r.alpha -= dt * 1.7;
         if (r.alpha <= 0) {
           this.ripples.splice(i, 1);
         }
@@ -331,23 +333,24 @@ export class WeatherManager {
     // 1. Draw Rain
     if (this.raindrops.length > 0) {
       ctx.save();
-      ctx.strokeStyle = '#8BC6EC';
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = '#A5D8F3';
+      ctx.lineWidth = 2.0;
       for (let i = 0; i < this.raindrops.length; i++) {
         const d = this.raindrops[i];
-        ctx.globalAlpha = d.alpha;
+        ctx.globalAlpha = Math.min(1.0, d.alpha * 1.25);
         ctx.beginPath();
         ctx.moveTo(d.x, d.y);
-        ctx.lineTo(d.x + d.vx * 1.5, d.y + d.len);
+        ctx.lineTo(d.x + d.vx * 1.6, d.y + d.len * 1.25);
         ctx.stroke();
       }
 
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = '#C2ECFF';
       for (let i = 0; i < this.ripples.length; i++) {
         const r = this.ripples[i];
         ctx.globalAlpha = r.alpha;
         ctx.beginPath();
-        ctx.ellipse(r.x, r.y, r.radius * 1.5, r.radius * 0.6, 0, 0, Math.PI * 2);
+        ctx.ellipse(r.x, r.y, r.radius * 1.6, r.radius * 0.6, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.restore();
@@ -356,8 +359,8 @@ export class WeatherManager {
     // 2. Draw Wind Streaks & Swirls
     if (this.windStreaks.length > 0 || this.windSwirls.length > 0) {
       ctx.save();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+      ctx.lineWidth = 2.2;
 
       for (let i = 0; i < this.windStreaks.length; i++) {
         const s = this.windStreaks[i];
@@ -369,8 +372,8 @@ export class WeatherManager {
       }
 
       // Draw swirling air spirals
-      ctx.strokeStyle = 'rgba(200, 240, 255, 0.45)';
-      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = 'rgba(210, 245, 255, 0.6)';
+      ctx.lineWidth = 2.0;
       for (let i = 0; i < this.windSwirls.length; i++) {
         const sw = this.windSwirls[i];
         ctx.globalAlpha = sw.alpha;
@@ -417,7 +420,7 @@ export class WeatherManager {
     if (this.screenFlashAlpha > 0) {
       ctx.save();
       ctx.fillStyle = `rgba(255, 255, 255, ${this.screenFlashAlpha})`;
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillRect(-100, -100, width + 200, height + 200);
       ctx.restore();
     }
   }

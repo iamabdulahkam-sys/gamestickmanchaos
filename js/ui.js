@@ -1188,6 +1188,9 @@ export class UIManager {
    * Shows centered countdown: 3 -> 2 -> 1 -> FIGHT!
    */
   showCountdown(text, isFight = false) {
+    if (this.game?.renderer?.hud) {
+      this.game.renderer.hud.showCountdown(text, isFight);
+    }
     if (!this.announcerEl) return;
     this.announcerEl.textContent = text;
     this.announcerEl.className = 'center-announcer active' + (isFight ? ' fight-text' : '');
@@ -1202,8 +1205,11 @@ export class UIManager {
    * Shows KO banner for knocked out fighter
    */
   showKOAnnounce(fighterName) {
+    if (this.game?.renderer?.hud) {
+      this.game.renderer.hud.showKO(fighterName);
+    }
     if (!this.announcerEl || this.game.state === 'RESULT') return;
-    this.announcerEl.textContent = `${fighterName.toUpperCase()} OUT!`;
+    this.announcerEl.textContent = `${String(fighterName).toUpperCase()} OUT!`;
     this.announcerEl.className = 'center-announcer active ko-announce';
 
     clearTimeout(this.announcerTimer);
@@ -1215,9 +1221,16 @@ export class UIManager {
   /**
    * Shows banner when an entire country team is eliminated
    */
-  showTeamEliminatedAnnounce(countryName) {
+  showTeamEliminatedAnnounce(countryOrName) {
+    if (this.game?.renderer?.hud) {
+      this.game.renderer.hud.showTeamEliminated(countryOrName);
+    }
     if (!this.announcerEl || this.game.state === 'RESULT') return;
-    this.announcerEl.textContent = `${countryName.toUpperCase()} OUT!`;
+    const nameStr =
+      typeof countryOrName === 'object' && countryOrName !== null
+        ? countryOrName.name || countryOrName.id
+        : countryOrName;
+    this.announcerEl.textContent = `${String(nameStr).toUpperCase()} OUT!`;
     this.announcerEl.className = 'center-announcer active ko-announce';
 
     clearTimeout(this.announcerTimer);
@@ -1230,8 +1243,11 @@ export class UIManager {
    * Shows banner for dynamic weather & nature shifts during match
    */
   showNatureAlert(text) {
+    if (this.game?.renderer?.hud) {
+      this.game.renderer.hud.showNatureAlert(text);
+    }
     if (!this.announcerEl || this.game.state === 'RESULT') return;
-    this.announcerEl.textContent = text.toUpperCase();
+    this.announcerEl.textContent = String(text).toUpperCase();
     this.announcerEl.className = 'center-announcer active nature-alert';
 
     clearTimeout(this.announcerTimer);
