@@ -164,6 +164,11 @@ export class TournamentManager {
       }
     }
 
+    // Fail-Forward Auto-Recovery: if canvasRecorder was left in an error/unexpected state, force-heal to IDLE
+    if (window.canvasRecorder.state !== 'IDLE' && window.canvasRecorder.state !== 'COMPLETED') {
+      window.canvasRecorder.state = 'IDLE';
+    }
+
     // Brief 350ms delay to ensure file handles, GPU NVENC contexts and codecs are completely reset
     await new Promise((resolve) => setTimeout(resolve, 350));
 
@@ -181,8 +186,9 @@ export class TournamentManager {
       this.autoRecordActive = true;
       console.log(`[Tournament] Started fresh direct-to-disk recording for Tournament #${this.completedTournaments + 1}`);
     } catch (err) {
-      this.autoRecordActive = false;
       console.error('[Tournament] Failed to start tournament recording session:', err);
+      // Fail-Forward: Keep isRecordingEnabled true so subsequent tournaments continue recording automatically
+      this.autoRecordActive = false;
     }
   }
 

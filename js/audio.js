@@ -86,14 +86,33 @@ class SoundManager {
 
   /**
    * Retrieves Web Audio MediaStream for screen recording synchronization.
-   * Automatically refreshes destination node if previous track was ended.
+   * Automatically attaches an inaudible keep-alive oscillator to guarantee continuous audio packet
+   * delivery to MediaRecorder and prevent FFmpeg muxing buffer overflow during silent game periods.
+   * @param {boolean} forceFresh Whether to create a brand new synchronized destination node
    */
-  getAudioStream() {
+  getAudioStream(forceFresh = false) {
     this.ensureActive();
     const existingTrack = this.mediaStreamDest?.stream?.getAudioTracks()[0];
-    if (!this.mediaStreamDest || !existingTrack || existingTrack.readyState === 'ended') {
+    if (forceFresh || !this.mediaStreamDest || !existingTrack || existingTrack.readyState === 'ended') {
       if (this.ctx && this.ctx.createMediaStreamDestination) {
-        this.mediaStreamDest = this.ctx.createMediaStreamDestination();
+        try {
+          this.mediaStreamDest = this.ctx.createMediaStreamDestination();
+          // Keep-alive silent oscillator: keeps Web Audio pipeline continuously emitting 48kHz audio frames
+          // even when zero game sound effects are playing (e.g. during countdowns, stage intros, or transitions).
+          // This prevents Chromium MediaRecorder and Opus encoder from pausing/delaying audio packets,
+          // which otherwise leads to FFmpeg interleaving queue overflow ("Too many packets buffered for output stream 0:0").
+          const keepAliveOsc = this.ctx.createOscillator();
+          const keepAliveGain = this.ctx.createGain();
+          keepAliveOsc.type = 'sine';
+          keepAliveOsc.frequency.setValueAtTime(440, this.ctx.currentTime);
+          // Inaudible near-zero amplitude (-100dB, 0.00001): active signal for the audio engine, 100% silent to human ears
+          keepAliveGain.gain.setValueAtTime(0.00001, this.ctx.currentTime);
+          keepAliveOsc.connect(keepAliveGain);
+          keepAliveGain.connect(this.mediaStreamDest);
+          keepAliveOsc.start();
+        } catch (e) {
+          console.warn('[SoundManager] Could not attach keep-alive oscillator:', e);
+        }
       }
     }
     return this.mediaStreamDest ? this.mediaStreamDest.stream : null;

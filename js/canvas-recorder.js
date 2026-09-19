@@ -45,11 +45,32 @@ export class CanvasRecorder {
     this.lastSavedFile = null;
     this.lastSavedName = null;
     this.lastSavedSize = null;
+    this.pendingChunkPromises = [];
 
     // Create and attach floating UI controller
     this.widgetEl = null;
     this.createUIWidget();
     this.bindKeyboardShortcuts();
+
+    // Fail-Forward Auto-Recovery: Listen to backend failure events and reset cleanly
+    if (typeof window !== 'undefined' && window.desktopApp?.onRecordingFailed) {
+      window.desktopApp.onRecordingFailed((data) => {
+        console.warn('[CanvasRecorder] Received backend recording failure notification:', data);
+        if (this.state === 'RECORDING' || this.state === 'PAUSED' || this.state === 'STOPPING') {
+          this.stopTimer();
+          if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+            try { this.mediaRecorder.stop(); } catch (e) {}
+          }
+          if (this.combinedStream) {
+            this.combinedStream.getVideoTracks().forEach((track) => track.stop());
+            this.combinedStream = null;
+          }
+          this.state = 'IDLE';
+          this.restoreCanvasResolution();
+          this.updateUIWidget();
+        }
+      });
+    }
 
     console.log('[CanvasRecorder] Native 4K Canvas Recorder initialized successfully.');
   }
@@ -217,7 +238,8 @@ export class CanvasRecorder {
       const tracks = [...this.videoStream.getVideoTracks()];
       if (this.config.includeAudio && this.game && this.game.sound) {
         try {
-          const audioStream = this.game.sound.getAudioStream?.();
+          // Force fresh destination node for each recording session to guarantee 0ms synchronized start
+          const audioStream = this.game.sound.getAudioStream?.(true);
           if (audioStream && audioStream.getAudioTracks().length > 0) {
             tracks.push(audioStream.getAudioTracks()[0]);
             console.log('[CanvasRecorder] Synchronized Web Audio game track attached.');
@@ -229,6 +251,7 @@ export class CanvasRecorder {
 
       this.combinedStream = new MediaStream(tracks);
       this.recordedChunks = [];
+      this.pendingChunkPromises = [];
       const formatToUse = this.isElectronFfmpeg ? 'webm' : this.config.format;
       this.activeMimeType = this.getBestSupportedMimeType(formatToUse) || support.mimeType;
 
@@ -250,9 +273,15 @@ export class CanvasRecorder {
         if (event.data && event.data.size > 0) {
           if (this.isElectronFfmpeg && window.desktopApp?.sendVideoChunk) {
             // Stream chunk direct to FFmpeg stdin on disk with session validation - zero RAM buildup
-            event.data.arrayBuffer().then((buffer) => {
+            const p = event.data.arrayBuffer().then((buffer) => {
               window.desktopApp.sendVideoChunk(activeSessionId, buffer);
+            }).catch((e) => {
+              console.warn('[CanvasRecorder] Chunk pipe failed:', e);
             });
+            this.pendingChunkPromises.push(p);
+            if (this.pendingChunkPromises.length > 20) {
+              this.pendingChunkPromises.splice(0, 10);
+            }
           } else {
             this.recordedChunks.push(event.data);
           }
@@ -360,6 +389,14 @@ export class CanvasRecorder {
   async finishAndDownload() {
     this.stopTimer();
 
+    // Flush any pending in-flight chunk buffers to IPC before stopping FFmpeg stdin
+    if (this.pendingChunkPromises && this.pendingChunkPromises.length > 0) {
+      try {
+        await Promise.allSettled(this.pendingChunkPromises);
+      } catch (e) {}
+      this.pendingChunkPromises = [];
+    }
+
     // Stop streams (only video track needs stopping; game audio track must stay alive for subsequent recordings)
     if (this.combinedStream) {
       this.combinedStream.getVideoTracks().forEach((track) => track.stop());
@@ -374,16 +411,25 @@ export class CanvasRecorder {
     if (this.isElectronFfmpeg && window.desktopApp?.stopFfmpegRecording) {
       try {
         const result = await window.desktopApp.stopFfmpegRecording();
-        this.lastSavedFile = result.filePath;
-        this.lastSavedName = result.fileName;
-        this.lastSavedSize = result.sizeMb;
-        this.state = 'COMPLETED';
+        if (result && result.success) {
+          this.lastSavedFile = result.filePath;
+          this.lastSavedName = result.fileName;
+          this.lastSavedSize = result.sizeMb;
+          this.state = 'COMPLETED';
+          console.log(`[CanvasRecorder] Desktop 4K NVENC video saved: ${result.filePath} (${result.sizeMb} MB)`);
+        } else {
+          console.warn('[CanvasRecorder] FFmpeg recording finished with error/warning:', result?.error || 'Empty recording');
+          // Fail-forward: reset to IDLE so subsequent tournament recordings can proceed smoothly
+          this.state = 'IDLE';
+        }
         this.restoreCanvasResolution();
         this.updateUIWidget();
-        console.log(`[CanvasRecorder] Desktop 4K NVENC video saved: ${result.filePath} (${result.sizeMb} MB)`);
       } catch (err) {
         console.error('[CanvasRecorder] Error finalizing FFmpeg recording:', err);
-        this.handleError(err.message);
+        // Fail-forward: restore IDLE state so next tournament can record immediately
+        this.state = 'IDLE';
+        this.restoreCanvasResolution();
+        this.updateUIWidget();
       } finally {
         if (this._stopResolve) {
           const resolve = this._stopResolve;
