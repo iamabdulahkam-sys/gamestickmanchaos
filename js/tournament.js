@@ -137,22 +137,74 @@ export class TournamentManager {
     this.completedTournaments = 0;
     this.recordOptions = recordOptions;
     this.isRecordingEnabled = !!(recordOptions && recordOptions.enabled);
+    this.autoRecordActive = this.isRecordingEnabled;
 
-    // Auto-start 4K 60FPS recording direct to disk if selected
-    if (this.isRecordingEnabled) {
-      if (window.canvasRecorder && typeof window.canvasRecorder.start === 'function') {
-        window.canvasRecorder.start({
-          resolutionKey: recordOptions.resolutionKey || '4k',
-          videoBitsPerSecond: recordOptions.videoBitsPerSecond || 60_000_000,
-          format: recordOptions.format || 'mp4',
-          fps: recordOptions.fps || 60,
-          includeAudio: recordOptions.includeAudio !== false,
-        });
-        this.autoRecordActive = true;
+    this.launchNewTournamentInstance(customCountries);
+  }
+
+  /**
+   * Starts a brand new, independent video recording session direct to disk for the current tournament instance.
+   * Ensures any preceding tournament recording is fully saved and finalized first.
+   */
+  async startFreshTournamentRecording() {
+    if (!this.isRecordingEnabled || !window.canvasRecorder) return;
+    this.autoRecordActive = true;
+
+    if (this.finalPodiumTimer) {
+      clearTimeout(this.finalPodiumTimer);
+      this.finalPodiumTimer = null;
+    }
+
+    // If an earlier tournament recording is still active/stopping, wait for it to fully finalize to disk
+    if (window.canvasRecorder.state === 'RECORDING' || window.canvasRecorder.state === 'PAUSED' || window.canvasRecorder.state === 'STOPPING') {
+      try {
+        await window.canvasRecorder.stop();
+      } catch (e) {
+        console.warn('[Tournament] Error finalizing previous tournament recording:', e);
       }
     }
 
-    this.launchNewTournamentInstance(customCountries);
+    // Brief 150ms delay to ensure file handles and codecs are completely reset
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    if (!this.isActive || !this.isRecordingEnabled) return;
+
+    const opts = this.recordOptions || {};
+    try {
+      await window.canvasRecorder.start({
+        resolutionKey: opts.resolutionKey || '4k',
+        videoBitsPerSecond: opts.videoBitsPerSecond || 60_000_000,
+        format: opts.format || 'mp4',
+        fps: opts.fps || 60,
+        includeAudio: opts.includeAudio !== false,
+      });
+      this.autoRecordActive = true;
+      console.log(`[Tournament] Started fresh direct-to-disk recording for Tournament #${this.completedTournaments + 1}`);
+    } catch (err) {
+      this.autoRecordActive = false;
+      console.error('[Tournament] Failed to start tournament recording session:', err);
+    }
+  }
+
+  /**
+   * Finalizes and saves the current tournament's video to disk.
+   */
+  async stopTournamentRecording() {
+    if (this.finalPodiumTimer) {
+      clearTimeout(this.finalPodiumTimer);
+      this.finalPodiumTimer = null;
+    }
+    if (this.autoRecordActive && window.canvasRecorder) {
+      if (window.canvasRecorder.state === 'RECORDING' || window.canvasRecorder.state === 'PAUSED' || window.canvasRecorder.state === 'STOPPING') {
+        console.log(`[Tournament] Tournament #${this.completedTournaments} complete. Saving video direct to disk...`);
+        try {
+          await window.canvasRecorder.stop();
+        } catch (err) {
+          console.warn('[Tournament] Error stopping tournament recorder:', err);
+        }
+      }
+      this.autoRecordActive = false;
+    }
   }
 
   /**
@@ -176,6 +228,11 @@ export class TournamentManager {
     if (this.transitionTimer) {
       clearInterval(this.transitionTimer);
       this.transitionTimer = null;
+    }
+
+    // Auto-record each tournament instance into its own independent video file direct to disk
+    if (this.isRecordingEnabled) {
+      this.startFreshTournamentRecording();
     }
 
     this.game.ui.hideTournamentPodium();
@@ -369,17 +426,18 @@ export class TournamentManager {
         } else {
           this.isShowingPodiumCountdown = false;
           this.game.ui.showTournamentPodium(top4Results, false);
+        }
 
-          // If auto recording was enabled for this series, finalize recording after celebration
-          if (this.autoRecordActive) {
-            this.finalPodiumTimer = setTimeout(() => {
-              if (this.autoRecordActive && window.canvasRecorder && (window.canvasRecorder.state === 'RECORDING' || window.canvasRecorder.state === 'PAUSED')) {
-                console.log('[Tournament] Series completed. Auto-finalizing tournament recording.');
-                window.canvasRecorder.stop();
-                this.autoRecordActive = false;
-              }
-            }, 30000);
+        // Save current tournament video after 8 seconds of podium celebration
+        // (Captures champion, trophy, flag, and victory fanfare, then finalizes to disk so it stays lightweight)
+        if (this.autoRecordActive) {
+          if (this.finalPodiumTimer) {
+            clearTimeout(this.finalPodiumTimer);
+            this.finalPodiumTimer = null;
           }
+          this.finalPodiumTimer = setTimeout(async () => {
+            await this.stopTournamentRecording();
+          }, 8000);
         }
       }, 1000);
     } else {
@@ -425,17 +483,9 @@ export class TournamentManager {
    * Exits Tournament Mode back to normal match
    */
   exitTournament() {
-    if (this.finalPodiumTimer) {
-      clearTimeout(this.finalPodiumTimer);
-      this.finalPodiumTimer = null;
-    }
-    if (this.autoRecordActive) {
-      if (window.canvasRecorder && (window.canvasRecorder.state === 'RECORDING' || window.canvasRecorder.state === 'PAUSED')) {
-        console.log('[Tournament] Exiting tournament mode. Stopping recording.');
-        window.canvasRecorder.stop();
-      }
-      this.autoRecordActive = false;
-    }
+    this.stopTournamentRecording();
+    this.isRecordingEnabled = false;
+    this.autoRecordActive = false;
 
     this.isActive = false;
     this.isStageBattleActive = false;

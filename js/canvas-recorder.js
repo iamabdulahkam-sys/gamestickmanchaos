@@ -261,8 +261,8 @@ export class CanvasRecorder {
         this.handleError(event.error ? event.error.message : 'MediaRecorder runtime error.');
       };
 
-      this.mediaRecorder.onstop = () => {
-        this.finishAndDownload();
+      this.mediaRecorder.onstop = async () => {
+        await this.finishAndDownload();
       };
 
       // 5. Start streaming chunks (250ms chunks in Electron for ultra-low latency direct-to-disk streaming)
@@ -319,26 +319,36 @@ export class CanvasRecorder {
 
   /**
    * Stops recording and triggers auto-download
+   * @returns {Promise<void>}
    */
-  stop() {
-    if (this.state === 'IDLE' || this.state === 'STOPPING' || !this.mediaRecorder) {
-      return;
+  async stop() {
+    if (this.state === 'IDLE' || this.state === 'COMPLETED' || !this.mediaRecorder) {
+      return this._stopPromise || Promise.resolve();
+    }
+    if (this.state === 'STOPPING' && this._stopPromise) {
+      return this._stopPromise;
     }
 
     this.state = 'STOPPING';
     this.stopTimer();
     this.updateUIWidget();
 
+    this._stopPromise = new Promise((resolve) => {
+      this._stopResolve = resolve;
+    });
+
     try {
-      if (this.mediaRecorder.state !== 'inactive') {
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
         this.mediaRecorder.stop();
       } else {
-        this.finishAndDownload();
+        await this.finishAndDownload();
       }
     } catch (err) {
       console.warn('[CanvasRecorder] Error stopping MediaRecorder:', err);
-      this.finishAndDownload();
+      await this.finishAndDownload();
     }
+
+    return this._stopPromise;
   }
 
   /**
@@ -371,6 +381,13 @@ export class CanvasRecorder {
       } catch (err) {
         console.error('[CanvasRecorder] Error finalizing FFmpeg recording:', err);
         this.handleError(err.message);
+      } finally {
+        if (this._stopResolve) {
+          const resolve = this._stopResolve;
+          this._stopResolve = null;
+          this._stopPromise = null;
+          resolve();
+        }
       }
       return;
     }
@@ -432,6 +449,12 @@ export class CanvasRecorder {
       this.handleError(`Failed to save video: ${err.message}`);
     } finally {
       this.restoreCanvasResolution();
+      if (this._stopResolve) {
+        const resolve = this._stopResolve;
+        this._stopResolve = null;
+        this._stopPromise = null;
+        resolve();
+      }
       setTimeout(() => {
         if (this.state === 'COMPLETED') {
           this.state = 'IDLE';
@@ -488,6 +511,10 @@ export class CanvasRecorder {
    * Restores resolution to previous setting if configured
    */
   restoreCanvasResolution() {
+    // If a tournament series is still running, keep current resolution to prevent canvas redraw flashing
+    if (this.game?.tournament?.isActive && this.game?.tournament?.isRecordingEnabled) {
+      return;
+    }
     if (this.config.restoreResolutionOnStop && this.game && this.previousResolution) {
       if (typeof this.game.setResolution === 'function') {
         this.game.setResolution(this.previousResolution, false);
