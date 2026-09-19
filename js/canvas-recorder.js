@@ -41,6 +41,7 @@ export class CanvasRecorder {
     this.previousResolution = 'auto';
     this.activeMimeType = '';
     this.isElectronFfmpeg = false;
+    this.currentSessionId = null;
     this.lastSavedFile = null;
     this.lastSavedName = null;
     this.lastSavedSize = null;
@@ -193,7 +194,8 @@ export class CanvasRecorder {
         if (!startRes.success) {
           throw new Error(`FFmpeg GPU recorder failed to start: ${startRes.error}`);
         }
-        console.log(`[CanvasRecorder] Desktop FFmpeg recorder active (${startRes.encoder}). Target: ${startRes.filePath}`);
+        this.currentSessionId = startRes.sessionId;
+        console.log(`[CanvasRecorder] Desktop FFmpeg recorder active (${startRes.encoder}, session #${startRes.sessionId}). Target: ${startRes.filePath}`);
       }
 
       // Hide previous saved notification if visible
@@ -243,12 +245,13 @@ export class CanvasRecorder {
         this.mediaRecorder = new MediaRecorder(this.combinedStream);
       }
 
+      const activeSessionId = this.currentSessionId;
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           if (this.isElectronFfmpeg && window.desktopApp?.sendVideoChunk) {
-            // Stream chunk direct to FFmpeg stdin on disk - zero RAM buildup
+            // Stream chunk direct to FFmpeg stdin on disk with session validation - zero RAM buildup
             event.data.arrayBuffer().then((buffer) => {
-              window.desktopApp.sendVideoChunk(buffer);
+              window.desktopApp.sendVideoChunk(activeSessionId, buffer);
             });
           } else {
             this.recordedChunks.push(event.data);

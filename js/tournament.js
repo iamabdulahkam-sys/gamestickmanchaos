@@ -164,8 +164,8 @@ export class TournamentManager {
       }
     }
 
-    // Brief 150ms delay to ensure file handles and codecs are completely reset
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Brief 350ms delay to ensure file handles, GPU NVENC contexts and codecs are completely reset
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
     if (!this.isActive || !this.isRecordingEnabled) return;
 
