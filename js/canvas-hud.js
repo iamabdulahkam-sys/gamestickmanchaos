@@ -195,7 +195,12 @@ export class CanvasHUD {
         ctx.restore();
         return;
       }
-      this.drawTournamentBanner(ctx, width, height, game.tournament);
+      this.drawTournamentBanner(ctx, width, height, game.tournament, game);
+    } else if (game.fighters && game.fighters.length > 1) {
+      const isGameOver = game.state === 'RESULT' || game.winnerDeclared || Boolean(game.winner);
+      if (!isGameOver) {
+        this.drawTournamentBanner(ctx, width, height, null, game);
+      }
     }
 
     // 2. Fighter Health & Status Cards removed per user preference (Standings panel handles all fighters cleanly)
@@ -223,19 +228,13 @@ export class CanvasHUD {
   }
 
   // ==========================================================================
-  // 1. TOURNAMENT STAGE BANNER
+  // 1. TOP HEADER BANNER (GAME TITLE: STICKMAN COUNTRY BALL CHAOS & WEATHER)
   // ==========================================================================
-  drawTournamentBanner(ctx, width, height, tournament) {
-    const stage = tournament.stages ? tournament.stages[tournament.currentStageIndex] : null;
-    if (!stage) return;
+  drawTournamentBanner(ctx, width, height, tournament, gameContext = null) {
+    const game = tournament?.game || gameContext || this.lastGameContext;
 
-    const title = stage.name ? stage.name.toUpperCase() : 'TOURNAMENT';
-    const sub = stage.advancingCount ? `${stage.advancingCount} ADVANCING` : '';
-
-    const text = sub ? `${title}  •  ${sub}` : title;
-
-    // Active weather condition badge for tournament
-    const weatherType = tournament.stageConditions?.weatherType || tournament.game?.weather?.type || 'none';
+    // Active weather condition badge
+    const weatherType = tournament?.stageConditions?.weatherType || game?.weather?.type || game?.weather?.weatherType || 'none';
     let weatherText = '☀️ CLEAR';
     let weatherColor = '#94A3B8';
     let weatherBg = 'rgba(148, 163, 184, 0.18)';
@@ -248,7 +247,7 @@ export class CanvasHUD {
         weatherBorder = 'rgba(56, 189, 248, 0.55)';
         break;
       case 'wind':
-        const wStr = tournament.stageConditions?.windStrength ? ` - ${tournament.stageConditions.windStrength.toUpperCase()}` : '';
+        const wStr = tournament?.stageConditions?.windStrength ? ` - ${tournament.stageConditions.windStrength.toUpperCase()}` : '';
         weatherText = `💨 WIND${wStr}`;
         weatherColor = '#2DD4BF';
         weatherBg = 'rgba(45, 212, 191, 0.22)';
@@ -275,15 +274,21 @@ export class CanvasHUD {
     }
 
     ctx.save();
-    ctx.font = 'bold 13px "Segoe UI", -apple-system, sans-serif';
-    const textMetrics = ctx.measureText(text);
+    ctx.font = '900 12.5px "Segoe UI", -apple-system, sans-serif';
+    const s1 = 'STICKMAN ';
+    const s2 = 'COUNTRY BALL ';
+    const s3 = 'CHAOS';
+    const w1 = ctx.measureText(s1).width;
+    const w2 = ctx.measureText(s2).width;
+    const w3 = ctx.measureText(s3).width;
+    const titleWidth = w1 + w2 + w3;
 
     ctx.font = 'bold 11px "Segoe UI", -apple-system, sans-serif';
     const weatherMetrics = ctx.measureText(weatherText);
     const weatherPillW = weatherMetrics.width + 16;
     const weatherPillH = 20;
 
-    const bannerWidth = Math.max(260, textMetrics.width + weatherPillW + 54);
+    const bannerWidth = titleWidth + weatherPillW + 56;
     const bannerHeight = 28;
     const bannerX = width / 2 - bannerWidth / 2;
     const bannerY = 16;
@@ -299,18 +304,26 @@ export class CanvasHUD {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Trophy icon / Accent dot
+    // Trophy / Accent Dot (Gold Glow)
     ctx.fillStyle = '#FFD700';
     ctx.beginPath();
     ctx.arc(bannerX + 16, bannerY + bannerHeight / 2, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Stage Text
-    ctx.font = 'bold 13px "Segoe UI", -apple-system, sans-serif';
-    ctx.fillStyle = '#FFD700';
-    ctx.textAlign = 'left';
+    // Title Text: STICKMAN (white) COUNTRY BALL (cyan) CHAOS (gold)
+    ctx.font = '900 12.5px "Segoe UI", -apple-system, sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, bannerX + 28, bannerY + bannerHeight / 2);
+    ctx.textAlign = 'left';
+
+    const textStartX = bannerX + 28;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(s1, textStartX, bannerY + bannerHeight / 2);
+
+    ctx.fillStyle = '#00F0FF';
+    ctx.fillText(s2, textStartX + w1, bannerY + bannerHeight / 2);
+
+    ctx.fillStyle = '#FFE600';
+    ctx.fillText(s3, textStartX + w1 + w2, bannerY + bannerHeight / 2);
 
     // Weather Pill Badge on right side of banner
     const pillX = bannerX + bannerWidth - weatherPillW - 8;
