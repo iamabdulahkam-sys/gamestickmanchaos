@@ -139,6 +139,9 @@ export class TournamentManager {
     this.isRecordingEnabled = !!(recordOptions && recordOptions.enabled);
     this.autoRecordActive = this.isRecordingEnabled;
 
+    this.game.winner = null;
+    this.game.winnerDeclared = false;
+
     this.launchNewTournamentInstance(customCountries);
   }
 
@@ -242,6 +245,8 @@ export class TournamentManager {
     }
 
     this.game.ui.hideTournamentPodium();
+    this.game.winner = null;
+    this.game.winnerDeclared = false;
     this.isStageBattleActive = false;
     this.stageCleared = false;
     this.podiumResults = null;
@@ -277,6 +282,8 @@ export class TournamentManager {
   startStageIntro() {
     this.isStageBattleActive = false;
     this.stageCleared = false;
+    this.game.winner = null;
+    this.game.winnerDeclared = false;
     const stage = this.stages[this.currentStageIndex];
     if (!stage) return;
 
@@ -337,6 +344,8 @@ export class TournamentManager {
     this.isShowingIntro = false;
     this.stageCleared = false;
     this.isStageBattleActive = true;
+    this.game.winner = null;
+    this.game.winnerDeclared = false;
     this.game.ui.hideTournamentIntro();
 
     const stage = this.stages[this.currentStageIndex];
@@ -535,6 +544,8 @@ export class TournamentManager {
     this.isShowingStageCleared = false;
     this.isShowingPodiumCountdown = false;
     this.podiumResults = null;
+    this.game.winner = null;
+    this.game.winnerDeclared = false;
     this.totalTournaments = 1;
     this.completedTournaments = 0;
     this.game.bombs.setTournamentMode(false);

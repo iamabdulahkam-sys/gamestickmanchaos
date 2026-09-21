@@ -69,6 +69,7 @@ export class GameManager {
     this.fps = 60;
     this.frameCount = 0;
     this.fpsTimer = 0;
+    this.winner = null;
     this.winnerDeclared = false;
     this.confettiTimer = 0;
     this.countdownTimer = null;
@@ -323,6 +324,7 @@ export class GameManager {
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
     }
+    this.winner = null;
     this.winnerDeclared = false;
     this.confettiTimer = 0;
     this.eliminationCounter = 0;

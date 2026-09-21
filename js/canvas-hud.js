@@ -126,7 +126,8 @@ export class CanvasHUD {
       }
     }
 
-    const isGameOver = game.state === 'RESULT' || game.winnerDeclared || Boolean(game.winner);
+    const isTournamentBattle = Boolean(game.tournament?.isActive && (game.tournament.isStageBattleActive || game.tournament.isShowingIntro));
+    const isGameOver = !isTournamentBattle && game.state === 'RESULT' && Boolean(game.winner);
     if (!isGameOver) return false;
 
     const width = 1280;
@@ -197,7 +198,7 @@ export class CanvasHUD {
       }
       this.drawTournamentBanner(ctx, width, height, game.tournament, game);
     } else if (game.fighters && game.fighters.length > 1) {
-      const isGameOver = game.state === 'RESULT' || game.winnerDeclared || Boolean(game.winner);
+      const isGameOver = game.state === 'RESULT' && Boolean(game.winner);
       if (!isGameOver) {
         this.drawTournamentBanner(ctx, width, height, null, game);
       }
@@ -211,7 +212,10 @@ export class CanvasHUD {
     }
 
     // 4. Draw Right Side Panel (Stage Mission & Elimination Feed during battle) or Champion Card (when match concludes)
-    const isGameOver = game.state === 'RESULT' || game.winnerDeclared || Boolean(game.winner);
+    // In tournament mode, Right Side Panel is ALWAYS displayed during stage intro and active stage battles.
+    // Champion card is only displayed when match/tournament has concluded with game.state === 'RESULT'
+    const isTournamentBattle = Boolean(game.tournament?.isActive && (game.tournament.isStageBattleActive || game.tournament.isShowingIntro));
+    const isGameOver = !isTournamentBattle && game.state === 'RESULT' && Boolean(game.winner);
     if (isGameOver) {
       const champion = game.winner;
       if (champion) {
