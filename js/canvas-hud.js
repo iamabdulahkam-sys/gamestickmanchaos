@@ -173,13 +173,15 @@ export class CanvasHUD {
       this.drawStandings(ctx, width, height, game);
     }
 
-    // 4. Draw Champion Victory Card (Right Side outside Arena when match concludes)
+    // 4. Draw Right Side Panel (Stage Mission & Elimination Feed during battle) or Champion Card (when match concludes)
     const isGameOver = game.state === 'RESULT' || game.winnerDeclared || Boolean(game.winner);
     if (isGameOver) {
       const champion = game.winner;
       if (champion) {
         this.drawChampionCard(ctx, width, height, champion, game);
       }
+    } else if (game.fighters && game.fighters.length > 1) {
+      this.drawRightPanel(ctx, width, height, game);
     }
 
     // 5. Draw In-Engine Announcer (Countdown 3-2-1-FIGHT!, Country Out, KO, Weather Shifts)
@@ -651,6 +653,358 @@ export class CanvasHUD {
         ctx.fill();
       }
     }
+
+    ctx.restore();
+  }
+
+  // ==========================================================================
+  // 3.5. RIGHT-SIDE BATTLE HUD PANEL (STAGE MISSION, ROADMAP & LIVE OUT FEED)
+  // ==========================================================================
+  drawRightPanel(ctx, width, height, game) {
+    let list = game.getStandings ? game.getStandings() : [];
+    if (!list || list.length === 0) return;
+
+    for (let i = 0; i < list.length; i++) {
+      list[i].rank = i + 1;
+    }
+
+    const isTournament = Boolean(game.tournament && game.tournament.isActive);
+    const stage = isTournament && game.tournament.stages ? game.tournament.stages[game.tournament.currentStageIndex] : null;
+    const stageName = stage ? (stage.name || stage.title || 'STAGE').toUpperCase() : 'BATTLE ARENA';
+    const advCount = stage ? (stage.advanceCount || 1) : 1;
+    const totalCount = list.length;
+    const aliveCount = list.filter((e) => e.isAlive).length;
+
+    // Eliminated countries sorted by elimination order descending (most recently eliminated on top)
+    const eliminated = list
+      .filter((e) => !e.isAlive)
+      .sort((a, b) => (b.eliminationOrder || 0) - (a.eliminationOrder || 0));
+
+    // Environmental hazard
+    const weatherType = (game.tournament?.stageConditions?.weatherType || game.weather?.weatherType || 'none').toLowerCase();
+    let hazard = { icon: '☀️', label: 'CLEAR SKY', desc: 'Standard battle conditions', color: '#94A3B8' };
+    if (weatherType === 'thunder' || weatherType === 'lightning') {
+      hazard = { icon: '⚡', label: 'THUNDER', desc: 'Random lightning strikes (-60 HP)', color: '#FBBF24' };
+    } else if (weatherType === 'rain') {
+      hazard = { icon: '🌧️', label: 'RAIN', desc: 'Slippery floor & low friction', color: '#38BDF8' };
+    } else if (weatherType === 'wind') {
+      hazard = { icon: '💨', label: 'WIND', desc: 'Strong gusts push fighters', color: '#2DD4BF' };
+    } else if (weatherType === 'chaos') {
+      hazard = { icon: '🌀', label: 'CHAOS', desc: 'High frequency weapon drops', color: '#F472B6' };
+    }
+
+    // Dynamic Sizing (symmetrical with left Standings panel)
+    const panelW = 240;
+    const panelX = width - panelW - 14;
+    const headerH = 32;
+    const missionBoxH = 74;
+    const roadmapH = isTournament ? 32 : 0;
+    const hazardH = 24;
+    const feedHeaderH = 22;
+    const maxFeedItems = 6;
+    const visibleFeedCount = Math.min(maxFeedItems, eliminated.length);
+    const feedBodyH = visibleFeedCount === 0 ? 38 : visibleFeedCount * 20 + 4;
+    const footerH = 22;
+
+    const panelH =
+      headerH +
+      6 +
+      missionBoxH +
+      6 +
+      (isTournament ? roadmapH + 6 : 0) +
+      hazardH +
+      6 +
+      feedHeaderH +
+      feedBodyH +
+      footerH +
+      8;
+
+    const panelY = Math.max(52, Math.min(68, (height - panelH) / 2));
+
+    ctx.save();
+
+    // 1. Panel Backdrop & Border (Matches Standings panel glassmorphism)
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.94)';
+    ctx.beginPath();
+    this.roundRect(ctx, panelX, panelY, panelW, panelH, 12);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 2. Header Bar
+    ctx.fillStyle = 'rgba(0, 229, 255, 0.12)';
+    ctx.beginPath();
+    this.roundRect(ctx, panelX, panelY, panelW, headerH, [12, 12, 0, 0]);
+    ctx.fill();
+
+    // Header Title
+    ctx.font = 'bold 12px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#00E5FF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const headerTitle = isTournament ? '🎯  STAGE MISSION' : '⚔️  BATTLE ARENA';
+    ctx.fillText(headerTitle, panelX + 12, panelY + headerH / 2);
+
+    // Header Badge (Top Advance or Remaining)
+    const badgeText = isTournament ? `TOP ${advCount} ADVANCE` : `${aliveCount} ALIVE`;
+    ctx.font = 'bold 9.5px "Segoe UI", sans-serif';
+    const badgeW = ctx.measureText(badgeText).width + 14;
+    const badgeX = panelX + panelW - badgeW - 8;
+    const badgeY = panelY + headerH / 2 - 9;
+    ctx.fillStyle = isTournament ? 'rgba(255, 230, 0, 0.18)' : 'rgba(52, 199, 89, 0.22)';
+    ctx.beginPath();
+    this.roundRect(ctx, badgeX, badgeY, badgeW, 18, 4);
+    ctx.fill();
+
+    ctx.fillStyle = isTournament ? '#FFE600' : '#34C759';
+    ctx.textAlign = 'center';
+    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + 9);
+
+    let curY = panelY + headerH + 6;
+    const contentX = panelX + 8;
+    const contentW = panelW - 16;
+
+    // 3. Section 1: Stage Goal & Objective Box
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.beginPath();
+    this.roundRect(ctx, contentX, curY, contentW, missionBoxH, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Stage Name
+    ctx.font = '900 13px Impact, "Arial Black", sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(stageName, contentX + 8, curY + 8);
+
+    if (isTournament) {
+      const neededOut = Math.max(1, totalCount - advCount);
+      const currentOut = Math.max(0, totalCount - aliveCount);
+      const remainingToFall = Math.max(0, aliveCount - advCount);
+      const progressRatio = Math.min(1, currentOut / neededOut);
+
+      ctx.font = '600 10px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#94A3B8';
+      const statusStr = remainingToFall === 0 ? '✓ Target reached! Stage ending...' : `${remainingToFall} countries must fall`;
+      ctx.fillText(statusStr, contentX + 8, curY + 26);
+
+      // Qualification Progress Bar
+      const barY = curY + 44;
+      const barH = 5;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.beginPath();
+      this.roundRect(ctx, contentX + 8, barY, contentW - 16, barH, 2.5);
+      ctx.fill();
+
+      if (progressRatio > 0) {
+        ctx.fillStyle = remainingToFall === 0 ? '#00FF87' : '#00E5FF';
+        ctx.beginPath();
+        this.roundRect(ctx, contentX + 8, barY, Math.max(4, (contentW - 16) * progressRatio), barH, 2.5);
+        ctx.fill();
+      }
+
+      ctx.font = 'bold 9px "Segoe UI", monospace';
+      ctx.fillStyle = '#64748B';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${currentOut}/${neededOut} OUT`, contentX + contentW - 8, curY + 54);
+      ctx.textAlign = 'left';
+    } else {
+      ctx.font = '600 10.5px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#94A3B8';
+      ctx.fillText('Free For All Elimination Battle', contentX + 8, curY + 26);
+      ctx.fillStyle = '#34C759';
+      ctx.fillText(`Active: ${aliveCount} / ${totalCount} Stickmen`, contentX + 8, curY + 44);
+    }
+
+    curY += missionBoxH + 6;
+
+    // 4. Section 2: Tournament Stages Roadmap (If Tournament)
+    if (isTournament) {
+      const roadmapLabels = ['64', '32', '16', 'QF', 'SF', '🏆'];
+      const currentIdx = game.tournament.currentStageIndex || 0;
+      const pillGap = 4;
+      const pillW = Math.floor((contentW - pillGap * 5) / 6);
+      const pillH = 22;
+
+      for (let s = 0; s < 6; s++) {
+        const px = contentX + s * (pillW + pillGap);
+        const isPast = s < currentIdx;
+        const isCurrent = s === currentIdx;
+
+        ctx.beginPath();
+        this.roundRect(ctx, px, curY, pillW, pillH, 4);
+
+        if (isCurrent) {
+          ctx.fillStyle = 'rgba(255, 230, 0, 0.22)';
+          ctx.fill();
+          ctx.strokeStyle = '#FFE600';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+          ctx.font = '900 9px Impact, sans-serif';
+          ctx.fillStyle = '#FFE600';
+        } else if (isPast) {
+          ctx.fillStyle = 'rgba(34, 197, 94, 0.18)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(34, 197, 94, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.font = 'bold 9px "Segoe UI", sans-serif';
+          ctx.fillStyle = '#22C55E';
+        } else {
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.font = 'bold 8.5px "Segoe UI", sans-serif';
+          ctx.fillStyle = '#64748B';
+        }
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const label = isPast ? '✓' : roadmapLabels[s];
+        ctx.fillText(label, px + pillW / 2, curY + pillH / 2);
+      }
+
+      curY += roadmapH + 6;
+    }
+
+    // 5. Section 3: Environmental Hazard Pill
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.beginPath();
+    this.roundRect(ctx, contentX, curY, contentW, hazardH, 5);
+    ctx.fill();
+    ctx.strokeStyle = hazard.color + '44';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = 'bold 9.5px "Segoe UI", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = hazard.color;
+    ctx.fillText(`${hazard.icon} ${hazard.label}:`, contentX + 6, curY + hazardH / 2);
+
+    const labelW = ctx.measureText(`${hazard.icon} ${hazard.label}:`).width;
+    ctx.font = '500 9px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#CBD5E1';
+    const maxDescW = contentW - labelW - 14;
+    ctx.fillText(this.truncateText(ctx, hazard.desc, maxDescW), contentX + 8 + labelW, curY + hazardH / 2);
+
+    curY += hazardH + 6;
+
+    // 6. Section 4: Live Elimination Feed Header
+    ctx.font = 'bold 10px "Segoe UI", sans-serif';
+    ctx.fillStyle = '#00F0FF';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('📜  RECENT OUTS', contentX + 2, curY + feedHeaderH / 2);
+
+    if (eliminated.length > 0) {
+      ctx.font = 'bold 8.5px "Segoe UI", monospace';
+      ctx.fillStyle = '#EF4444';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${eliminated.length} OUT`, contentX + contentW - 2, curY + feedHeaderH / 2);
+    }
+
+    curY += feedHeaderH;
+
+    // Section 4b: Elimination Feed Items
+    if (eliminated.length === 0) {
+      // Empty state
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+      ctx.beginPath();
+      this.roundRect(ctx, contentX, curY, contentW, feedBodyH, 6);
+      ctx.fill();
+
+      ctx.font = 'bold 9.5px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#64748B';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⚔️  All nations in battle', contentX + contentW / 2, curY + feedBodyH / 2 - 6);
+      ctx.font = '8px "Segoe UI", sans-serif';
+      ctx.fillStyle = '#475569';
+      ctx.fillText('Out countries will appear here', contentX + contentW / 2, curY + feedBodyH / 2 + 7);
+    } else {
+      const rowH = 20;
+      for (let i = 0; i < visibleFeedCount; i++) {
+        const item = eliminated[i];
+        const rowY = curY + i * (rowH + 1);
+
+        // Row background
+        ctx.fillStyle = i === 0 ? 'rgba(239, 68, 68, 0.16)' : 'rgba(239, 68, 68, 0.07)';
+        ctx.beginPath();
+        this.roundRect(ctx, contentX, rowY, contentW, rowH, 4);
+        ctx.fill();
+
+        if (i === 0) {
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        // Rank Number
+        ctx.font = 'bold 8.5px "Courier New", monospace';
+        ctx.fillStyle = '#94A3B8';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`#${item.rank}`, contentX + 4, rowY + rowH / 2);
+
+        // Flag Icon
+        const flagR = 5;
+        const flagCx = contentX + 28;
+        const flagCy = rowY + rowH / 2;
+        if (item.country) {
+          Flags.drawFlagHead(ctx, item.country, flagCx, flagCy, flagR);
+        }
+
+        // Country Name
+        const nameX = flagCx + flagR + 5;
+        const rawName = item.country?.name || item.name || 'Country';
+        const displayName = rawName.length > 10 ? rawName.substring(0, 9) + '…' : rawName;
+        ctx.font = 'bold 9px "Segoe UI", sans-serif';
+        ctx.fillStyle = '#F1F5F9';
+        ctx.textAlign = 'left';
+        ctx.fillText(displayName, nameX, rowY + rowH / 2);
+
+        // Strikethrough for eliminated
+        const textW = ctx.measureText(displayName).width;
+        ctx.strokeStyle = '#EF4444';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(nameX - 1, rowY + rowH / 2);
+        ctx.lineTo(nameX + textW + 1, rowY + rowH / 2);
+        ctx.stroke();
+
+        // OUT Badge
+        ctx.font = '900 8px Impact, "Arial Black", sans-serif';
+        ctx.fillStyle = '#EF4444';
+        ctx.textAlign = 'right';
+        ctx.fillText('OUT', contentX + contentW - 6, rowY + rowH / 2);
+      }
+    }
+
+    curY += feedBodyH + 4;
+
+    // 7. Footer: Match Clock & Stats
+    const matchSec = Math.floor(game.matchTime || 0);
+    const mins = Math.floor(matchSec / 60);
+    const secs = matchSec % 60;
+    const clockStr = `⏱️ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+    ctx.font = 'bold 9px "Segoe UI", monospace';
+    ctx.fillStyle = '#64748B';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(clockStr, contentX + 4, curY + footerH / 2);
+
+    const totalDmg = Math.round(game.totalDamageDealt || 0);
+    ctx.textAlign = 'right';
+    ctx.fillText(`💥 ${totalDmg} DMG`, contentX + contentW - 4, curY + footerH / 2);
 
     ctx.restore();
   }
