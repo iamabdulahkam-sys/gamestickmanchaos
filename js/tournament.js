@@ -420,11 +420,13 @@ export class TournamentManager {
     this.stageCleared = true;
     this.isStageBattleActive = false;
 
-    // Stop fighting and jumping: command all survivors to stand still with raised hands
+    // Command all survivors to celebrate stage victory with joyful victory hops!
     for (let i = 0; i < this.game.fighters.length; i++) {
       const f = this.game.fighters[i];
       if (!f.isKO) {
         f.isVictoryPose = true;
+        f.celebrateTime = Math.random() * 2;
+        f.hopTimer = Math.random() * 0.4;
       }
     }
 
@@ -472,6 +474,18 @@ export class TournamentManager {
       this.game.winnerDeclared = true;
       this.game.state = 'RESULT';
 
+      // Set champion celebration & floating crown on the victorious stickman
+      const champId = championCountry.id || championCountry;
+      for (let i = 0; i < this.game.fighters.length; i++) {
+        const f = this.game.fighters[i];
+        if (!f.isKO && (f.country?.id === champId || f.country === champId || f.id === champId)) {
+          f.isVictoryPose = true;
+          f.isChampionCelebration = true;
+        } else if (!f.isKO) {
+          f.isVictoryPose = true;
+        }
+      }
+
       const hasNextTournament = this.completedTournaments < this.totalTournaments;
 
       setTimeout(() => {
@@ -510,7 +524,7 @@ export class TournamentManager {
         this.game.ui.showTournamentStageCleared(stage, nextStage, qualifiers, eliminated);
         this.transitionSecondsLeft = 6;
         this.isShowingStageCleared = true;
-      }, 1200);
+      }, 2500);
     }
   }
 

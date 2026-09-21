@@ -33,7 +33,9 @@ export class StickmanFighter {
     this.walkCycle = Math.random() * Math.PI * 2;
     this.stunTimer = 0;
     this.isVictoryPose = false;
+    this.isChampionCelebration = false;
     this.celebrateTime = 0;
+    this.hopTimer = 0;
 
     // Equipped weapon/item state
     this.equippedItem = null;
@@ -326,9 +328,29 @@ export class StickmanFighter {
           x: this.body.velocity.x * 0.82,
           y: this.body.velocity.y,
         });
-        Body.setAngle(this.body, this.body.angle * 0.8);
-        Body.setAngularVelocity(this.body, this.body.angularVelocity * 0.4);
-        this.walkCycle = 0;
+        Body.setAngle(this.body, this.body.angle * 0.75);
+        Body.setAngularVelocity(this.body, this.body.angularVelocity * 0.3);
+        this.walkCycle = (this.walkCycle || 0) + dt * 4;
+
+        // Joyful rhythmic victory hops!
+        this.hopTimer = (this.hopTimer || 0) - dt;
+        if (this.hopTimer <= 0) {
+          this.hopTimer = 0.65 + Math.random() * 0.45;
+          const hopStrength = this.isChampionCelebration ? -8.2 : -6.2;
+          Body.setVelocity(this.body, {
+            x: (Math.random() - 0.5) * 2.0,
+            y: hopStrength,
+          });
+
+          // Confetti burst above celebrating stickman
+          if (effects && Math.random() < 0.65) {
+            effects.addConfettiBurst(
+              this.body.position.x + (Math.random() - 0.5) * 20,
+              this.body.position.y - 32,
+              this.isChampionCelebration ? 14 : 7
+            );
+          }
+        }
       } else {
         const angle = this.body.angle;
         const uprightForce = -angle * 0.08;
@@ -390,11 +412,20 @@ export class StickmanFighter {
         footX = kneeX + (hipX < 0 ? -6 : 6);
         footY = kneeY + shinLen * 0.6;
       } else if (this.isVictoryPose) {
-        // Firm upright victory stance: standing still with feet planted
-        kneeX = hipX;
-        kneeY = hipY + thighLen;
-        footX = hipX + (hipX < 0 ? -3.5 : 3.5);
-        footY = hipY + legLength;
+        if (!this.isGrounded && Math.abs(this.body.velocity.y) > 0.8) {
+          // Energetic airborne cheer jump
+          const tuck = Math.sin(phase * 1.5) * 3;
+          kneeX = hipX + (hipX < 0 ? -4 : 4);
+          kneeY = hipY + thighLen * 0.65;
+          footX = kneeX + (hipX < 0 ? -6 : 6) + tuck;
+          footY = kneeY + shinLen * 0.55;
+        } else {
+          // Ground bouncy victory stance
+          kneeX = hipX;
+          kneeY = hipY + thighLen;
+          footX = hipX + (hipX < 0 ? -3.5 : 3.5);
+          footY = hipY + legLength;
+        }
       } else if (!this.isGrounded && Math.abs(this.body.velocity.y) > 1.2) {
         // Airborne jump / dive pose
         const tuck = Math.sin(phase) * 0.4;
@@ -460,12 +491,13 @@ export class StickmanFighter {
       leftHandX = -18; leftHandY = shoulderY - 8;
       rightHandX = 18; rightHandY = shoulderY - 10;
     } else if (this.isVictoryPose) {
-      // Victory celebration: standing still with both hands raised high in the air \o/
-      const wave = Math.sin((this.celebrateTime || 0) * 4) * 1.5;
-      leftHandX = -14 + wave * 0.3;
-      leftHandY = shoulderY - 20 + wave;
-      rightHandX = 14 - wave * 0.3;
-      rightHandY = shoulderY - 20 - wave;
+      // Victory celebration: both hands raised high in the air \o/ pumping rhythmically
+      const pump = Math.sin((this.celebrateTime || 0) * 8) * 5;
+      const sway = Math.cos((this.celebrateTime || 0) * 6) * 3;
+      leftHandX = -14 + sway;
+      leftHandY = shoulderY - 22 + pump;
+      rightHandX = 14 + sway;
+      rightHandY = shoulderY - 22 - pump;
     } else if (this.punchAnim > 0) {
       const punchReach = 18 + Math.sin(this.punchAnim * Math.PI) * 22;
       if (this.facing > 0) {
@@ -671,6 +703,17 @@ export class StickmanFighter {
       ctx.moveTo(headX - 7, headY - 3); ctx.lineTo(headX - 4, headY); ctx.lineTo(headX - 7, headY + 3);
       ctx.moveTo(headX + 7, headY - 3); ctx.lineTo(headX + 4, headY); ctx.lineTo(headX + 7, headY + 3);
       ctx.stroke();
+    } else if (this.isVictoryPose) {
+      // Happy smiling eyes (^ ^) during victory celebration
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = 2.2;
+      const drawHappyEye = (cx, cy) => {
+        ctx.beginPath();
+        ctx.arc(cx, cy + 1, 3.2, Math.PI, Math.PI * 2);
+        ctx.stroke();
+      };
+      drawHappyEye(headX - 4.5, headY - 1);
+      drawHappyEye(headX + 4.5, headY - 1);
     } else {
       // Determined cartoon eyes looking in facing direction
       const eyeOffsetX = this.facing * 3;
@@ -686,6 +729,30 @@ export class StickmanFighter {
       ctx.fill();
     }
     ctx.restore();
+
+    // Floating Golden Crown above Tournament Champion's head
+    if (this.isChampionCelebration && !this.isKO) {
+      ctx.save();
+      const crownBob = Math.sin((this.celebrateTime || 0) * 4) * 2.5;
+      const crownY = headY - this.headRadius - 13 + crownBob;
+      ctx.fillStyle = '#FFD700';
+      ctx.shadowColor = 'rgba(255, 215, 0, 0.85)';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(-11, crownY);
+      ctx.lineTo(-13, crownY - 10);
+      ctx.lineTo(-5, crownY - 5);
+      ctx.lineTo(0, crownY - 12);
+      ctx.lineTo(5, crownY - 5);
+      ctx.lineTo(13, crownY - 10);
+      ctx.lineTo(11, crownY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#B45309';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Floating Weapon / Powerup Badge above Head
     if (this.equippedItem && !this.isKO) {

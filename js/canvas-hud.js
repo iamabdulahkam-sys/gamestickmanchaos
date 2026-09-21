@@ -191,11 +191,6 @@ export class CanvasHUD {
         ctx.restore();
         return;
       }
-      if (game.tournament.isShowingPodiumCountdown || (game.tournament.stageCleared && game.tournament.podiumResults)) {
-        this.drawTournamentPodium(ctx, width, height, game.tournament);
-        ctx.restore();
-        return;
-      }
       this.drawTournamentBanner(ctx, width, height, game.tournament, game);
     } else if (game.fighters && game.fighters.length > 1) {
       const isGameOver = game.state === 'RESULT' && Boolean(game.winner);
@@ -211,18 +206,22 @@ export class CanvasHUD {
       this.drawStandings(ctx, width, height, game);
     }
 
-    // 4. Draw Right Side Panel (Stage Mission & Elimination Feed during battle) or Champion Card (when match concludes)
-    // In tournament mode, Right Side Panel is ALWAYS displayed during stage intro and active stage battles.
-    // Champion card is only displayed when match/tournament has concluded with game.state === 'RESULT'
-    const isTournamentBattle = Boolean(game.tournament?.isActive && (game.tournament.isStageBattleActive || game.tournament.isShowingIntro));
-    const isGameOver = !isTournamentBattle && game.state === 'RESULT' && Boolean(game.winner);
-    if (isGameOver) {
-      const champion = game.winner;
-      if (champion) {
-        this.drawChampionCard(ctx, width, height, champion, game);
+    // 4. Draw Right Side Panel (Stage Mission, Champion Card, or Tournament Grand Finale Podium)
+    // Docked on the right side of the screen so the center arena remains 100% visible
+    const isPodiumActive = Boolean(game.tournament?.isActive && (game.tournament.isShowingPodiumCountdown || (game.tournament.stageCleared && game.tournament.podiumResults)));
+    if (isPodiumActive) {
+      this.drawTournamentPodium(ctx, width, height, game.tournament);
+    } else {
+      const isTournamentBattle = Boolean(game.tournament?.isActive && (game.tournament.isStageBattleActive || game.tournament.isShowingIntro));
+      const isGameOver = !isTournamentBattle && game.state === 'RESULT' && Boolean(game.winner);
+      if (isGameOver) {
+        const champion = game.winner;
+        if (champion) {
+          this.drawChampionCard(ctx, width, height, champion, game);
+        }
+      } else if (game.fighters && game.fighters.length > 1) {
+        this.drawRightPanel(ctx, width, height, game);
       }
-    } else if (game.fighters && game.fighters.length > 1) {
-      this.drawRightPanel(ctx, width, height, game);
     }
 
     // 5. Draw In-Engine Announcer (Countdown 3-2-1-FIGHT!, Country Out, KO, Weather Shifts)
@@ -1908,43 +1907,43 @@ export class CanvasHUD {
   }
 
   // ==========================================================================
-  // 7. TOURNAMENT GRAND FINALE PODIUM (CHAMPION RECOGNITION)
+  // 7. TOURNAMENT GRAND FINALE PODIUM (CHAMPION RECOGNITION - DOCKED RIGHT)
   // ==========================================================================
   drawTournamentPodium(ctx, width, height, tournament) {
     this.interactiveButtons = [];
-    const cardW = 680;
-    const cardH = 500;
-    const cardX = (width - cardW) / 2;
+    const cardW = 280;
+    const cardH = 390;
+    const cardX = width - cardW - 24;
     const cardY = (height - cardH) / 2;
 
     ctx.save();
 
-    // 1. Radial Card Background
-    ctx.fillStyle = 'rgba(14, 18, 32, 0.98)';
+    // 1. Semi-transparent Dark Card Background
+    ctx.fillStyle = 'rgba(14, 18, 32, 0.96)';
     ctx.beginPath();
-    this.roundRect(ctx, cardX, cardY, cardW, cardH, 20);
+    this.roundRect(ctx, cardX, cardY, cardW, cardH, 18);
     ctx.fill();
 
     // 2. Glowing Gold Border
     const glow = 0.5 + Math.sin(this.pulseTime * 4) * 0.25;
     ctx.shadowColor = `rgba(255, 215, 0, ${glow})`;
-    ctx.shadowBlur = 26;
+    ctx.shadowBlur = 24;
     ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 2.4;
     ctx.stroke();
     ctx.shadowBlur = 0;
 
     // 3. Floating Trophy Halo
     const trophyCx = cardX + cardW / 2;
-    const trophyY = cardY + 45;
-    this.drawTrophyIcon(ctx, trophyCx, trophyY, 32);
+    const trophyY = cardY + 36;
+    this.drawTrophyIcon(ctx, trophyCx, trophyY, 22);
 
     // 4. Title
-    ctx.font = '900 24px Impact, "Arial Black", sans-serif';
+    ctx.font = '900 17px Impact, "Arial Black", sans-serif';
     ctx.fillStyle = '#FFD700';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('TOURNAMENT CHAMPION!', trophyCx, cardY + 95);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('TOURNAMENT CHAMPION!', trophyCx, cardY + 70);
 
     // 5. Winner Flag & Name
     const results = tournament.podiumResults || [];
@@ -1952,45 +1951,45 @@ export class CanvasHUD {
 
     if (champion) {
       const country = champion.country || champion;
-      const flagW = 90;
-      const flagH = 60;
+      const flagW = 76;
+      const flagH = 48;
       const fx = trophyCx - flagW / 2;
-      const fy = cardY + 140;
+      const fy = cardY + 92;
 
       this.drawFlag(ctx, country, fx, fy, flagW, flagH, 6);
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 2;
       this.roundRect(ctx, fx, fy, flagW, flagH, 6);
       ctx.stroke();
 
       let champName = (country.name || 'CHAMPION').toUpperCase();
-      const maxChampNameW = cardW - 60;
-      let champFontSize = 28;
+      const maxChampNameW = cardW - 36;
+      let champFontSize = 21;
       ctx.font = `900 ${champFontSize}px Impact, "Arial Black", sans-serif`;
-      while (champFontSize > 16 && ctx.measureText(champName).width > maxChampNameW) {
-        champFontSize -= 2;
+      while (champFontSize > 12 && ctx.measureText(champName).width > maxChampNameW) {
+        champFontSize -= 1.5;
         ctx.font = `900 ${champFontSize}px Impact, "Arial Black", sans-serif`;
       }
       const safeChampName = this.truncateText(ctx, champName, maxChampNameW);
       ctx.fillStyle = '#FFFFFF';
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(safeChampName, trophyCx, cardY + 215);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(safeChampName, trophyCx, cardY + 162);
 
       // Crown badge
-      const badgeText = 'TOURNAMENT CHAMPION';
-      ctx.font = '900 13px Impact, sans-serif';
-      const bW = ctx.measureText(badgeText).width + 32;
-      const bH = 28;
+      const badgeText = '🏆 1ST PLACE • CHAMPION';
+      ctx.font = '900 11.5px Impact, sans-serif';
+      const bW = Math.min(cardW - 36, ctx.measureText(badgeText).width + 24);
+      const bH = 24;
       const bX = trophyCx - bW / 2;
-      const bY = cardY + 260;
+      const bY = cardY + 182;
 
-      ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.18)';
       ctx.beginPath();
-      this.roundRect(ctx, bX, bY, bW, bH, 14);
+      this.roundRect(ctx, bX, bY, bW, bH, 12);
       ctx.fill();
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.4;
       ctx.stroke();
 
       ctx.fillStyle = '#FFD700';
@@ -1999,34 +1998,45 @@ export class CanvasHUD {
       ctx.fillText(badgeText, trophyCx, bY + bH / 2);
 
       // Congratulatory subtext
-      ctx.font = '600 13px "Segoe UI", sans-serif';
+      ctx.font = '600 11.5px "Segoe UI", sans-serif';
       ctx.fillStyle = '#CBD5E1';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Congratulations! Conquered all obstacles and defeated 64 competing nations!', trophyCx, cardY + 315);
+      ctx.fillText('Conquered all 64 nations!', trophyCx, cardY + 224);
+
+      if (tournament.isShowingPodiumCountdown) {
+        const sec = Math.max(0, Math.ceil(tournament.podiumSecondsLeft || 0));
+        ctx.font = 'bold 11.5px "Segoe UI", monospace';
+        ctx.fillStyle = '#00FF87';
+        ctx.fillText(`Next Tournament in ${sec}s`, trophyCx, cardY + 246);
+      }
     }
 
     // 6. Action Button
-    const btnW = 200;
-    const btnH = 42;
-    const btnX = trophyCx - btnW / 2;
-    const btnY = cardY + cardH - 70;
+    const btnW = cardW - 36;
+    const btnH = 38;
+    const btnX = cardX + 18;
+    const btnY = cardY + cardH - 52;
 
     const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
     btnGrad.addColorStop(0, '#00FF87');
     btnGrad.addColorStop(1, '#60EFFF');
     ctx.fillStyle = btnGrad;
     ctx.beginPath();
-    this.roundRect(ctx, btnX, btnY, btnW, btnH, 12);
+    this.roundRect(ctx, btnX, btnY, btnW, btnH, 10);
     ctx.fill();
 
-    ctx.font = '900 14px Impact, "Arial Black", sans-serif';
+    const btnLabel = tournament.isShowingPodiumCountdown && tournament.completedTournaments < tournament.totalTournaments
+      ? 'NEXT TOURNAMENT'
+      : 'PLAY AGAIN';
+    ctx.font = '900 13.5px Impact, "Arial Black", sans-serif';
     ctx.fillStyle = '#0C1220';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('PLAY AGAIN', trophyCx, btnY + btnH / 2);
+    ctx.fillText(btnLabel, trophyCx, btnY + btnH / 2);
 
     this.interactiveButtons.push({
+      action: 'tournament_next',
       x: btnX,
       y: btnY,
       w: btnW,
