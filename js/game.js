@@ -71,6 +71,8 @@ export class GameManager {
     this.fpsTimer = 0;
     this.winner = null;
     this.winnerDeclared = false;
+    this.matchTime = 0;
+    this.totalDamageDealt = 0;
     this.confettiTimer = 0;
     this.countdownTimer = null;
     this.eliminationCounter = 0;
@@ -326,6 +328,8 @@ export class GameManager {
     }
     this.winner = null;
     this.winnerDeclared = false;
+    this.matchTime = 0;
+    this.totalDamageDealt = 0;
     this.confettiTimer = 0;
     this.eliminationCounter = 0;
     this.teamEliminations = new Map();
@@ -614,6 +618,10 @@ export class GameManager {
 
     // 2. State specific updates
     if (this.state === 'BATTLE') {
+      if (!isBattleOver) {
+        this.matchTime = (this.matchTime || 0) + dt;
+      }
+
       // Step Physics with fighters passed for anti-clump low-G buoyancy
       this.physics.update(dt, this.fighters);
 

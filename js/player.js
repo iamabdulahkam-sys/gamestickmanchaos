@@ -226,6 +226,12 @@ export class StickmanFighter {
   takeDamage(amount, knockback, attacker, effects) {
     if (!this.body || this.isKO) return;
 
+    const dmg = Math.max(0, Number(amount) || 0);
+    const game = this.game || attacker?.game;
+    if (game && dmg > 0) {
+      game.totalDamageDealt = (game.totalDamageDealt || 0) + dmg;
+    }
+
     this.hp = Math.max(0, this.hp - amount);
     this.hitFlashTimer = 0.16;
     this.stunTimer = 0.22;

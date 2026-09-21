@@ -247,6 +247,8 @@ export class TournamentManager {
     this.game.ui.hideTournamentPodium();
     this.game.winner = null;
     this.game.winnerDeclared = false;
+    this.game.matchTime = 0;
+    this.game.totalDamageDealt = 0;
     this.isStageBattleActive = false;
     this.stageCleared = false;
     this.podiumResults = null;
@@ -284,6 +286,8 @@ export class TournamentManager {
     this.stageCleared = false;
     this.game.winner = null;
     this.game.winnerDeclared = false;
+    this.game.matchTime = 0;
+    this.game.totalDamageDealt = 0;
     const stage = this.stages[this.currentStageIndex];
     if (!stage) return;
 
@@ -346,6 +350,8 @@ export class TournamentManager {
     this.isStageBattleActive = true;
     this.game.winner = null;
     this.game.winnerDeclared = false;
+    this.game.matchTime = 0;
+    this.game.totalDamageDealt = 0;
     this.game.ui.hideTournamentIntro();
 
     const stage = this.stages[this.currentStageIndex];

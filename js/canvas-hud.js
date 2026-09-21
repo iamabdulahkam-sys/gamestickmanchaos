@@ -1093,13 +1093,13 @@ export class CanvasHUD {
     const secs = matchSec % 60;
     const clockStr = `⏱️ ${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 
-    ctx.font = 'bold 9px "Segoe UI", monospace';
-    ctx.fillStyle = '#64748B';
+    ctx.font = 'bold 9.5px "Segoe UI", monospace';
+    ctx.fillStyle = '#94A3B8';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(clockStr, contentX + 4, curY + footerH / 2);
 
-    const totalDmg = Math.round(game.totalDamageDealt || 0);
+    const totalDmg = Math.round(game.totalDamageDealt || 0).toLocaleString();
     ctx.textAlign = 'right';
     ctx.fillText(`💥 ${totalDmg} DMG`, contentX + contentW - 4, curY + footerH / 2);
 
