@@ -17,8 +17,9 @@ export const CONFIG = {
     '4k': { id: '4k', name: 'Ultra HD 4K (2160p - 3840×2160)', scale: 3.0, width: 3840, height: 2160 },
   },
   TOURNAMENT: {
-    INTRO_DURATION_SECONDS: 10,
-    STAGE_CLEARED_SECONDS: 6,
+    INTRO_DURATION_SECONDS: 7,
+    STAGE_CLEARED_SECONDS: 3,
+    CELEBRATION_SECONDS: 10,
   },
   ARENA: {
     DEFAULT_RADIUS: 290,

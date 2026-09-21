@@ -1912,7 +1912,7 @@ export class CanvasHUD {
   drawTournamentPodium(ctx, width, height, tournament) {
     this.interactiveButtons = [];
     const cardW = 280;
-    const cardH = 390;
+    const cardH = 370;
     const cardX = width - cardW - 24;
     const cardY = (height - cardH) / 2;
 
@@ -1998,18 +1998,11 @@ export class CanvasHUD {
       ctx.fillText(badgeText, trophyCx, bY + bH / 2);
 
       // Congratulatory subtext
-      ctx.font = '600 11.5px "Segoe UI", sans-serif';
+      ctx.font = '600 12px "Segoe UI", sans-serif';
       ctx.fillStyle = '#CBD5E1';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Conquered all 64 nations!', trophyCx, cardY + 224);
-
-      if (tournament.isShowingPodiumCountdown) {
-        const sec = Math.max(0, Math.ceil(tournament.podiumSecondsLeft || 0));
-        ctx.font = 'bold 11.5px "Segoe UI", monospace';
-        ctx.fillStyle = '#00FF87';
-        ctx.fillText(`Next Tournament in ${sec}s`, trophyCx, cardY + 246);
-      }
+      ctx.fillText('Conquered all 64 nations!', trophyCx, cardY + 226);
     }
 
     // 6. Action Button

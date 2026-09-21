@@ -26,7 +26,7 @@ export class TournamentManager {
     this.stageEliminated = [];
     this.stageConditions = null;
     this.introTimer = null;
-    this.introSecondsLeft = 30;
+    this.introSecondsLeft = CONFIG.TOURNAMENT?.INTRO_DURATION_SECONDS || 7;
     this.transitionTimer = null;
     this.stageCleared = false;
     this.isStageBattleActive = false;
@@ -35,7 +35,7 @@ export class TournamentManager {
     this.totalTournaments = 1;
     this.completedTournaments = 0;
     this.podiumTransitionTimer = null;
-    this.podiumSecondsLeft = 30;
+    this.podiumSecondsLeft = CONFIG.TOURNAMENT?.CELEBRATION_SECONDS || 10;
     this.isRecordingEnabled = false;
     this.autoRecordActive = false;
     this.recordOptions = null;
@@ -321,7 +321,7 @@ export class TournamentManager {
     this.game.fighters = [];
 
     // Reset intro timer & country reveal sequence
-    this.introSecondsLeft = CONFIG.TOURNAMENT?.INTRO_DURATION_SECONDS || 10;
+    this.introSecondsLeft = CONFIG.TOURNAMENT?.INTRO_DURATION_SECONDS || 7;
     this.isShowingIntro = true;
     this.introElapsed = 0;
     this.revealedCountriesCount = 0;
@@ -487,10 +487,11 @@ export class TournamentManager {
       }
 
       const hasNextTournament = this.completedTournaments < this.totalTournaments;
+      const celebrationDuration = (CONFIG.TOURNAMENT?.CELEBRATION_SECONDS || 10) * 1000;
 
       setTimeout(() => {
         if (hasNextTournament) {
-          this.podiumSecondsLeft = 30;
+          this.podiumSecondsLeft = CONFIG.TOURNAMENT?.CELEBRATION_SECONDS || 10;
           this.isShowingPodiumCountdown = true;
           this.game.ui.showTournamentPodium(top4Results, true, Math.ceil(this.podiumSecondsLeft));
         } else {
@@ -498,7 +499,7 @@ export class TournamentManager {
           this.game.ui.showTournamentPodium(top4Results, false);
         }
 
-        // Save current tournament video after 8 seconds of podium celebration
+        // Save current tournament video after 10 seconds of podium celebration
         // (Captures champion, trophy, flag, and victory fanfare, then finalizes to disk so it stays lightweight)
         if (this.autoRecordActive) {
           if (this.finalPodiumTimer) {
@@ -507,7 +508,7 @@ export class TournamentManager {
           }
           this.finalPodiumTimer = setTimeout(async () => {
             await this.stopTournamentRecording();
-          }, 8000);
+          }, celebrationDuration);
         }
       }, 1000);
     } else {
@@ -519,12 +520,14 @@ export class TournamentManager {
       this.currentPool = qualifiers;
 
       const nextStage = this.stages[this.currentStageIndex + 1];
+      const celebrationDuration = (CONFIG.TOURNAMENT?.CELEBRATION_SECONDS || 10) * 1000;
 
+      // Allow survivors to celebrate for 10 seconds before displaying advancing screen
       setTimeout(() => {
         this.game.ui.showTournamentStageCleared(stage, nextStage, qualifiers, eliminated);
-        this.transitionSecondsLeft = 6;
+        this.transitionSecondsLeft = CONFIG.TOURNAMENT?.STAGE_CLEARED_SECONDS || 3;
         this.isShowingStageCleared = true;
-      }, 2500);
+      }, celebrationDuration);
     }
   }
 
