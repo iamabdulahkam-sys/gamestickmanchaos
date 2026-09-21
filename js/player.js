@@ -32,6 +32,8 @@ export class StickmanFighter {
     this.walkPhase = Math.random() * Math.PI * 2;
     this.walkCycle = Math.random() * Math.PI * 2;
     this.stunTimer = 0;
+    this.isVictoryPose = false;
+    this.celebrateTime = 0;
 
     // Equipped weapon/item state
     this.equippedItem = null;
@@ -89,7 +91,7 @@ export class StickmanFighter {
   }
 
   jump(forwardImpulse = 0, jumpMultiplier = 1.0) {
-    if (!this.body || this.isKO || !this.isGrounded) return;
+    if (!this.body || this.isKO || !this.isGrounded || this.isVictoryPose) return;
     const { Body } = this.physics;
     const forceScale = Math.pow(this.scale, 2);
     Body.applyForce(this.body, this.body.position, {
@@ -101,7 +103,7 @@ export class StickmanFighter {
   }
 
   move(direction, isSprint = false) {
-    if (!this.body || this.isKO || this.stunTimer > 0) return;
+    if (!this.body || this.isKO || this.stunTimer > 0 || this.isVictoryPose) return;
     const { Body } = this.physics;
 
     this.facing = direction > 0 ? 1 : -1;
@@ -122,7 +124,7 @@ export class StickmanFighter {
   }
 
   punch(effects) {
-    if (!this.body || this.isKO || this.punchCooldown > 0 || this.stunTimer > 0) return;
+    if (!this.body || this.isKO || this.punchCooldown > 0 || this.stunTimer > 0 || this.isVictoryPose) return;
 
     this.punchCooldown = CONFIG.FIGHTER.PUNCH_COOLDOWN_MS / 1000;
     this.punchAnim = 1.0;
@@ -312,9 +314,20 @@ export class StickmanFighter {
     // Upright stabilization torque (spring-like uprighting for cartoon balance)
     if (!this.isKO) {
       const { Body } = this.physics;
-      const angle = this.body.angle;
-      const uprightForce = -angle * 0.08;
-      Body.setAngularVelocity(this.body, this.body.angularVelocity * 0.9 + uprightForce);
+      if (this.isVictoryPose) {
+        this.celebrateTime = (this.celebrateTime || 0) + dt;
+        Body.setVelocity(this.body, {
+          x: this.body.velocity.x * 0.82,
+          y: this.body.velocity.y,
+        });
+        Body.setAngle(this.body, this.body.angle * 0.8);
+        Body.setAngularVelocity(this.body, this.body.angularVelocity * 0.4);
+        this.walkCycle = 0;
+      } else {
+        const angle = this.body.angle;
+        const uprightForce = -angle * 0.08;
+        Body.setAngularVelocity(this.body, this.body.angularVelocity * 0.9 + uprightForce);
+      }
     }
 
     // KO fade out
@@ -370,6 +383,12 @@ export class StickmanFighter {
         kneeY = hipY + thighLen * 0.8;
         footX = kneeX + (hipX < 0 ? -6 : 6);
         footY = kneeY + shinLen * 0.6;
+      } else if (this.isVictoryPose) {
+        // Firm upright victory stance: standing still with feet planted
+        kneeX = hipX;
+        kneeY = hipY + thighLen;
+        footX = hipX + (hipX < 0 ? -3.5 : 3.5);
+        footY = hipY + legLength;
       } else if (!this.isGrounded && Math.abs(this.body.velocity.y) > 1.2) {
         // Airborne jump / dive pose
         const tuck = Math.sin(phase) * 0.4;
@@ -434,6 +453,13 @@ export class StickmanFighter {
     if (this.isKO) {
       leftHandX = -18; leftHandY = shoulderY - 8;
       rightHandX = 18; rightHandY = shoulderY - 10;
+    } else if (this.isVictoryPose) {
+      // Victory celebration: standing still with both hands raised high in the air \o/
+      const wave = Math.sin((this.celebrateTime || 0) * 4) * 1.5;
+      leftHandX = -14 + wave * 0.3;
+      leftHandY = shoulderY - 20 + wave;
+      rightHandX = 14 - wave * 0.3;
+      rightHandY = shoulderY - 20 - wave;
     } else if (this.punchAnim > 0) {
       const punchReach = 18 + Math.sin(this.punchAnim * Math.PI) * 22;
       if (this.facing > 0) {

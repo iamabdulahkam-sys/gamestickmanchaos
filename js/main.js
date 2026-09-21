@@ -76,20 +76,16 @@ window.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('keydown', (e) => {
     // Escape or Enter: Dismiss or advance from podium modal if active
     if (e.code === 'Escape' || e.code === 'Enter') {
-      const podiumModal = document.getElementById('tournament-podium-modal');
-      if (podiumModal && podiumModal.classList.contains('active')) {
-        e.preventDefault();
-        if (game.tournament && game.tournament.isActive) {
+      if (game.tournament && game.tournament.isActive) {
+        if (game.tournament.isShowingPodiumCountdown || (game.tournament.stageCleared && game.tournament.podiumResults)) {
+          e.preventDefault();
           if (game.tournament.isShowingPodiumCountdown) {
             game.tournament.skipPodiumTimerAndStartNext();
           } else {
-            game.ui.hideTournamentPodium();
             game.tournament.exitTournament();
           }
-        } else {
-          game.ui.hideTournamentPodium();
+          return;
         }
-        return;
       }
     }
 

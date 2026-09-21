@@ -70,6 +70,7 @@ export class GameManager {
     this.confettiTimer = 0;
     this.eliminationCounter = 0;
     this.teamEliminations = new Map();
+    this.announcedEliminations = new Set();
     this.crowdShockwaveCooldown = 0;
 
     this.setupPhysicsCallbacks();
@@ -309,6 +310,7 @@ export class GameManager {
     this.confettiTimer = 0;
     this.eliminationCounter = 0;
     this.teamEliminations = new Map();
+    this.announcedEliminations = new Set();
     this.crowdShockwaveCooldown = 1.0;
     if (this.winnerTimeout) {
       clearTimeout(this.winnerTimeout);
@@ -558,7 +560,8 @@ export class GameManager {
 
   update(dt) {
     // 1. Update Effects, Particles & Weather
-    const isBattleOver = this.state === 'RESULT' || this.winnerDeclared;
+    const isTournamentBattleOver = Boolean(this.tournament?.isActive && (!this.tournament.isStageBattleActive || this.tournament.stageCleared));
+    const isBattleOver = this.state === 'RESULT' || this.winnerDeclared || isTournamentBattleOver;
     const aliveCount = this.fighters.filter((f) => !f.isKO).length;
     this.effects.totalFighterCount = aliveCount > 0 ? aliveCount : this.fighters.length;
     this.effects.update(dt);
@@ -575,17 +578,27 @@ export class GameManager {
       // Step Physics with fighters passed for anti-clump low-G buoyancy
       this.physics.update(dt, this.fighters);
 
-      // Check Crowd Shockwave to disperse dense clusters of >8 fighters (non-damaging)
-      this.checkCrowdShockwave(dt);
+      if (!isTournamentBattleOver) {
+        // Check Crowd Shockwave to disperse dense clusters of >8 fighters (non-damaging)
+        this.checkCrowdShockwave(dt);
 
-      // Item updates (periodic spawns, parachute fall, pickups)
-      this.items.update(dt, this.physics, this.fighters, this.effects);
+        // Item updates (periodic spawns, parachute fall, pickups)
+        this.items.update(dt, this.physics, this.fighters, this.effects);
 
-      // Time Bomb updates (ticking countdown, explosion shockwaves)
-      this.bombs.update(dt, this.physics, this.fighters, this.effects, isBattleOver);
+        // Time Bomb updates (ticking countdown, explosion shockwaves)
+        this.bombs.update(dt, this.physics, this.fighters, this.effects, isBattleOver);
 
-      // AI updates with smart targeting and nearby weapon seeking
-      this.ai.update(this.fighters, dt, this.effects, this.items.items);
+        // AI updates with smart targeting and nearby weapon seeking
+        this.ai.update(this.fighters, dt, this.effects, this.items.items);
+      } else {
+        // Tournament stage cleared or podium celebration: all survivors stand still in victory pose
+        for (let i = 0; i < this.fighters.length; i++) {
+          const fighter = this.fighters[i];
+          if (!fighter.isKO) {
+            fighter.isVictoryPose = true;
+          }
+        }
+      }
 
       // Update Fighters
       for (let i = 0; i < this.fighters.length; i++) {
@@ -596,7 +609,9 @@ export class GameManager {
       this.physics.enforceArenaBounds(this.fighters);
 
       // Check Win / KO conditions
-      this.checkBattleStatus();
+      if (!isTournamentBattleOver) {
+        this.checkBattleStatus();
+      }
     } else if (this.state === 'COUNTDOWN') {
       // Soft physics settling during countdown
       this.physics.update(dt * 0.5, this.fighters);
@@ -604,19 +619,12 @@ export class GameManager {
         this.fighters[i].update(dt, this.effects);
       }
     } else if (this.state === 'RESULT') {
-      // Gentle physics for survivor celebration
+      // Gentle physics for survivor celebration: stand still upright with arms raised (no jumping)
       this.physics.update(dt, this.fighters);
       for (let i = 0; i < this.fighters.length; i++) {
         const fighter = this.fighters[i];
         if (!fighter.isKO) {
-          fighter.celebrateTimer = (fighter.celebrateTimer || 0) + dt;
-          if (fighter.celebrateTimer > 0.7) {
-            fighter.celebrateTimer = 0;
-            if (fighter.isGrounded) {
-              fighter.jump((Math.random() - 0.5) * 0.4);
-              fighter.punchTimer = 0.25;
-            }
-          }
+          fighter.isVictoryPose = true;
         }
         fighter.update(dt, this.effects);
       }
@@ -653,23 +661,16 @@ export class GameManager {
       }
     }
 
-    // Check newly KO'd fighters or team eliminations announcements
-    if (this.fighters.length <= 8) {
-      for (let i = 0; i < this.fighters.length; i++) {
-        const f = this.fighters[i];
-        if (f.isKO && !f.announcedKO) {
-          f.announcedKO = true;
-          this.ui.showKOAnnounce(f.name);
-        }
+    // Check country team elimination announcements (for all match sizes & tournament)
+    for (let i = 0; i < this.fighters.length; i++) {
+      const f = this.fighters[i];
+      if (f.isKO && !f.announcedKO) {
+        f.announcedKO = true;
       }
-    } else {
-      // In large matches, announce when an entire country team is eliminated
-      for (let i = 0; i < this.fighters.length; i++) {
-        const f = this.fighters[i];
-        if (!aliveCountryIds.has(f.country.id) && !f.country.teamAnnouncedOut) {
-          f.country.teamAnnouncedOut = true;
-          this.ui.showTeamEliminatedAnnounce(f.country);
-        }
+      if (!aliveCountryIds.has(f.country.id) && !this.announcedEliminations.has(f.country.id)) {
+        this.announcedEliminations.add(f.country.id);
+        f.country.teamAnnouncedOut = true;
+        this.ui.showTeamEliminatedAnnounce(f.country);
       }
     }
 

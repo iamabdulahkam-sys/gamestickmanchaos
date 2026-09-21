@@ -20,15 +20,18 @@ export class CanvasHUD {
     this.flagImages = new Map();
     this.interactiveButtons = [];
 
-    // In-Engine Canvas Announcer State (Countdown 3-2-1, Country Out, KO, Weather Alerts)
+    // In-Engine Canvas Announcer State (Countdown 3-2-1, Weather Alerts)
     this.announcer = {
       text: '',
       subText: '',
-      type: 'none', // 'countdown', 'fight', 'team_out', 'ko', 'nature'
+      type: 'none', // 'countdown', 'fight', 'nature'
       country: null,
       timer: 0,
       duration: 0.8,
     };
+
+    // In-Engine Elimination Feed (Transparent, Snappy ~1.1s, Multi-Out Stacking)
+    this.eliminationFeed = [];
 
     this.initFlagImages();
 
@@ -53,6 +56,16 @@ export class CanvasHUD {
         this.announcer.type = 'none';
         this.announcer.text = '';
         this.announcer.country = null;
+      }
+    }
+
+    if (this.eliminationFeed && this.eliminationFeed.length > 0) {
+      for (let i = this.eliminationFeed.length - 1; i >= 0; i--) {
+        const item = this.eliminationFeed[i];
+        item.timer -= dt;
+        if (item.timer <= 0) {
+          this.eliminationFeed.splice(i, 1);
+        }
       }
     }
   }
@@ -153,17 +166,10 @@ export class CanvasHUD {
       this.drawTournamentBanner(ctx, width, height, game.tournament);
     }
 
-    // 2. Draw Fighter Health & Status Cards (Corner Docked outside Arena)
-    if (game.fighters && game.fighters.length > 0) {
-      this.drawFighterCards(ctx, width, height, game);
-    }
+    // 2. Fighter Health & Status Cards removed per user preference (Standings panel handles all fighters cleanly)
 
     // 3. Draw Live Battle Standings Panel (Left Side outside Arena)
-    const isStandingsOpenInDOM = game.ui && !game.ui.klasemenPanel?.classList.contains('hidden');
-    const isRecording = Boolean(window.canvasRecorder && window.canvasRecorder.state === 'RECORDING');
-    
-    // Display standings on canvas if toggled open in DOM or if recording with standings enabled
-    if ((isStandingsOpenInDOM || (isRecording && this.showStandings)) && game.fighters && game.fighters.length > 1) {
+    if (this.showStandings && game.fighters && game.fighters.length > 1) {
       this.drawStandings(ctx, width, height, game);
     }
 
@@ -1526,6 +1532,9 @@ export class CanvasHUD {
   // IN-ENGINE ANNOUNCER (COUNTDOWN, COUNTRY OUT, KO, WEATHER SHIFTS)
   // ==========================================================================
   showCountdown(text, isFight = false) {
+    if (this.eliminationFeed) {
+      this.eliminationFeed = [];
+    }
     const dur = isFight ? 1.1 : 0.75;
     this.announcer = {
       text: String(text),
@@ -1554,27 +1563,57 @@ export class CanvasHUD {
         ) || null;
     }
 
-    const dur = 1.35;
-    this.announcer = {
-      text: `${countryName.toUpperCase()} OUT!`,
-      subText: 'ELIMINATED',
-      type: 'team_out',
+    const id = country ? country.id : countryName.toLowerCase();
+
+    // Prevent duplicate entry if already in active feed
+    if (this.eliminationFeed.some((item) => item.id === id)) return;
+
+    // Limit active items to max 2 for clean vertical multi-out stacking
+    if (this.eliminationFeed.length >= 2) {
+      this.eliminationFeed.shift();
+    }
+
+    const dur = 1.1; // Snappy 1.1 seconds lifetime
+    this.eliminationFeed.push({
+      id: id,
       country: country,
+      countryName: countryName,
+      text: `${countryName.toUpperCase()} OUT!`,
       timer: dur,
       duration: dur,
-    };
+    });
   }
 
-  showKO(fighterName) {
-    const dur = 1.25;
-    this.announcer = {
-      text: `${String(fighterName).toUpperCase()} OUT!`,
-      subText: 'KNOCKED OUT',
-      type: 'ko',
-      country: null,
+  showKO(fighterName, country = null) {
+    let c = country;
+    let name = String(fighterName || '');
+    if (!c && typeof fighterName === 'string') {
+      c =
+        CONFIG.COUNTRIES.find(
+          (item) =>
+            item.name.toLowerCase() === name.toLowerCase() ||
+            item.id.toLowerCase() === name.toLowerCase()
+        ) || null;
+    }
+
+    const displayName = c ? c.name : name;
+    const id = c ? c.id : displayName.toLowerCase();
+
+    if (this.eliminationFeed.some((item) => item.id === id)) return;
+
+    if (this.eliminationFeed.length >= 2) {
+      this.eliminationFeed.shift();
+    }
+
+    const dur = 1.1;
+    this.eliminationFeed.push({
+      id: id,
+      country: c,
+      countryName: displayName,
+      text: `${displayName.toUpperCase()} OUT!`,
       timer: dur,
       duration: dur,
-    };
+    });
   }
 
   showNatureAlert(text) {
@@ -1590,9 +1629,15 @@ export class CanvasHUD {
   }
 
   drawAnnouncer(ctx, width, height, game) {
+    // 1. Draw In-Engine Elimination Feed (Transparent, Snappy ~1.1s, Multi-Out Stacking)
+    if (this.eliminationFeed && this.eliminationFeed.length > 0) {
+      this.drawEliminationFeed(ctx, width, height);
+    }
+
+    // 2. Draw General Announcer (Countdown 3-2-1, FIGHT!, Weather Shifts)
     if (!this.announcer || this.announcer.timer <= 0 || !this.announcer.text) return;
 
-    const { text, subText, type, country, timer, duration } = this.announcer;
+    const { text, subText, type, timer, duration } = this.announcer;
     const elapsed = Math.max(0, duration - timer);
 
     ctx.save();
@@ -1685,121 +1730,6 @@ export class CanvasHUD {
       ctx.shadowBlur = 32;
       ctx.fillText('FIGHT!', 0, 0);
 
-    } else if (type === 'team_out') {
-      // Pop-in scale: 0.85 -> 1.0
-      const progress = Math.min(1, elapsed / 0.12);
-      const scale = 0.85 + progress * 0.15;
-      const alpha = timer < 0.25 ? timer / 0.25 : 1.0;
-
-      const cx = width / 2;
-      const cy = height * 0.44;
-
-      ctx.translate(cx, cy);
-      ctx.scale(scale, scale);
-      ctx.globalAlpha = alpha;
-
-      // Font for measurement
-      ctx.font = '900 36px "Segoe UI", Impact, "Arial Black", sans-serif';
-      const textMetrics = ctx.measureText(text);
-
-      const flagW = country ? 48 : 0;
-      const flagH = 32;
-      const gap = country ? 16 : 0;
-      const contentW = flagW + gap + textMetrics.width;
-      const bannerW = Math.max(340, contentW + 48);
-      const bannerH = 68;
-      const bannerX = -bannerW / 2;
-      const bannerY = -bannerH / 2;
-
-      // Translucent comic banner background
-      ctx.fillStyle = 'rgba(18, 10, 22, 0.94)';
-      ctx.beginPath();
-      this.roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 16);
-      ctx.fill();
-
-      // Intense Crimson Red glow and border
-      ctx.strokeStyle = '#FF1744';
-      ctx.lineWidth = 2.5;
-      ctx.shadowColor = '#FF1744';
-      ctx.shadowBlur = 18;
-      ctx.stroke();
-
-      // Reset shadow for content
-      ctx.shadowBlur = 0;
-
-      const startContentX = -contentW / 2;
-
-      // Draw Flag if country object available
-      if (country) {
-        const flagX = startContentX;
-        const flagY = -flagH / 2;
-        this.drawFlag(ctx, country, flagX, flagY, flagW, flagH, 3);
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
-      }
-
-      // Draw "[COUNTRY] OUT!" text
-      const textX = startContentX + flagW + gap;
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = '#000000';
-      ctx.strokeText(text, textX, -6);
-
-      ctx.fillStyle = '#FF3366';
-      ctx.fillText(text, textX, -6);
-
-      // Sub-badge: "ELIMINATED"
-      ctx.font = 'bold 11px "Segoe UI", sans-serif';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-      ctx.fillText('ELIMINATED', textX, 16);
-
-    } else if (type === 'ko') {
-      // Fighter KO banner
-      const progress = Math.min(1, elapsed / 0.12);
-      const scale = 0.85 + progress * 0.15;
-      const alpha = timer < 0.25 ? timer / 0.25 : 1.0;
-
-      const cx = width / 2;
-      const cy = height * 0.44;
-
-      ctx.translate(cx, cy);
-      ctx.scale(scale, scale);
-      ctx.globalAlpha = alpha;
-
-      ctx.font = '900 34px "Segoe UI", Impact, "Arial Black", sans-serif';
-      const textMetrics = ctx.measureText(text);
-      const bannerW = Math.max(300, textMetrics.width + 48);
-      const bannerH = 64;
-      const bannerX = -bannerW / 2;
-      const bannerY = -bannerH / 2;
-
-      ctx.fillStyle = 'rgba(22, 10, 14, 0.94)';
-      ctx.beginPath();
-      this.roundRect(ctx, bannerX, bannerY, bannerW, bannerH, 16);
-      ctx.fill();
-
-      ctx.strokeStyle = '#FF3366';
-      ctx.lineWidth = 2.5;
-      ctx.shadowColor = '#FF3366';
-      ctx.shadowBlur = 18;
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineWidth = 6;
-      ctx.strokeStyle = '#000000';
-      ctx.strokeText(text, 0, -6);
-      ctx.fillStyle = '#FF3366';
-      ctx.fillText(text, 0, -6);
-
-      ctx.font = 'bold 11px "Segoe UI", sans-serif';
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-      ctx.fillText('KNOCKED OUT', 0, 16);
-
     } else if (type === 'nature') {
       // Dynamic weather alert banner
       const progress = Math.min(1, elapsed / 0.12);
@@ -1846,5 +1776,102 @@ export class CanvasHUD {
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Renders the in-engine elimination feed directly over the arena without any solid/black box.
+   * Features:
+   * 1. 100% transparent backdrop (arena remains fully visible).
+   * 2. Snappy ~1.1s duration (pop-in scale, gentle upward drift, smooth fade-out).
+   * 3. Multi-Out / Double Elimination vertical stacking (Row 1 & Row 2 if 2 countries eliminated close together).
+   */
+  drawEliminationFeed(ctx, width, height) {
+    if (!this.eliminationFeed || this.eliminationFeed.length === 0) return;
+
+    const count = this.eliminationFeed.length;
+    const cy = height * 0.40;
+    const isDouble = count >= 2;
+
+    for (let i = 0; i < count; i++) {
+      const item = this.eliminationFeed[i];
+      const elapsed = Math.max(0, item.duration - item.timer);
+
+      // Pop-in scale punch: 1.28 -> 1.0 in first 0.12s
+      const popProgress = Math.min(1, elapsed / 0.12);
+      const scale = 1.28 - popProgress * 0.28;
+
+      // Gentle upward drift of ~12px over 1.1s
+      const driftY = -((elapsed / item.duration) * 12);
+
+      // Smooth fade-out in final 0.25s
+      const alpha = item.timer < 0.25 ? Math.max(0, item.timer / 0.25) : 1.0;
+
+      // Stack rows vertically if multiple countries eliminated
+      const baseY = isDouble ? (cy - 24 + i * 48) : cy;
+      const posX = width / 2;
+      const posY = baseY + driftY;
+
+      ctx.save();
+      ctx.translate(posX, posY);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+
+      const fontSize = isDouble ? 33 : 37;
+      ctx.font = `900 ${fontSize}px "Segoe UI", Impact, "Arial Black", sans-serif`;
+      ctx.textBaseline = 'middle';
+
+      const textMetrics = ctx.measureText(item.text);
+      const flagW = item.country ? (isDouble ? 42 : 46) : 0;
+      const flagH = item.country ? (isDouble ? 27 : 30) : 0;
+      const gap = item.country ? 14 : 0;
+      const totalW = flagW + gap + textMetrics.width;
+      const startX = -totalW / 2;
+
+      // 1. Render country flag with drop shadow and crisp white border (NO black background box)
+      if (item.country) {
+        const flagX = startX;
+        const flagY = -flagH / 2;
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 2;
+        this.drawFlag(ctx, item.country, flagX, flagY, flagW, flagH, 3.5);
+        ctx.restore();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        this.roundRect(ctx, flagX, flagY, flagW, flagH, 3.5);
+        ctx.stroke();
+      }
+
+      // 2. Render "[COUNTRY] OUT!" text with thick black stroke and vivid crimson gradient
+      const textX = startX + flagW + gap;
+      ctx.textAlign = 'left';
+
+      // Thick black comic stroke guarantees 100% readability over any arena surface
+      ctx.lineWidth = 8;
+      ctx.strokeStyle = '#000000';
+      ctx.lineJoin = 'round';
+      ctx.miterLimit = 2;
+      ctx.shadowColor = 'transparent';
+      ctx.strokeText(item.text, textX, 0);
+
+      // Crimson & Red gradient fill with glowing neon drop shadow
+      const grad = ctx.createLinearGradient(0, -fontSize * 0.45, 0, fontSize * 0.45);
+      grad.addColorStop(0, '#FFFFFF');
+      grad.addColorStop(0.22, '#FF3366');
+      grad.addColorStop(0.75, '#FF1744');
+      grad.addColorStop(1, '#C62828');
+      ctx.fillStyle = grad;
+
+      ctx.shadowColor = '#FF1744';
+      ctx.shadowBlur = 14;
+      ctx.fillText(item.text, textX, 0);
+
+      ctx.restore();
+    }
   }
 }

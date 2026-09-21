@@ -387,6 +387,16 @@ export class TournamentManager {
    */
   onStageCleared(aliveFighters, aliveCountryIds) {
     this.stageCleared = true;
+    this.isStageBattleActive = false;
+
+    // Stop fighting and jumping: command all survivors to stand still with raised hands
+    for (let i = 0; i < this.game.fighters.length; i++) {
+      const f = this.game.fighters[i];
+      if (!f.isKO) {
+        f.isVictoryPose = true;
+      }
+    }
+
     const stage = this.stages[this.currentStageIndex];
 
     // Identify qualifying countries (survivors) and eliminated countries

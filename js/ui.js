@@ -14,7 +14,7 @@ export class UIManager {
     this.game = game;
 
     // Element references
-    this.announcerEl = document.getElementById('center-announcer');
+    this.announcerEl = null;
     this.winnerModal = document.getElementById('winner-modal');
     this.settingsModal = document.getElementById('settings-modal');
     this.debugPanel = document.getElementById('debug-panel');
@@ -22,24 +22,24 @@ export class UIManager {
     this.soundBtn = document.getElementById('btn-sound');
     this.pauseBtn = document.getElementById('btn-pause');
     this.rosterBtn = document.getElementById('btn-roster');
-    this.hudBandTop = document.getElementById('hud-band-top');
-    this.hudBandBottom = document.getElementById('hud-band-bottom');
+    this.hudBandTop = null;
+    this.hudBandBottom = null;
     this.canvasWrapper = document.getElementById('canvas-wrapper');
-    this.klasemenPanel = document.getElementById('klasemen-panel');
-    this.klasemenListEl = document.getElementById('klasemen-list');
-    this.klasemenChip = document.getElementById('klasemen-chip');
-    this.klasemenCountBadge = document.getElementById('klasemen-count-badge');
-    this.klasemenChipBadge = document.getElementById('klasemen-chip-badge');
+    this.klasemenPanel = null;
+    this.klasemenListEl = null;
+    this.klasemenChip = null;
+    this.klasemenCountBadge = null;
+    this.klasemenChipBadge = null;
     this.klasemenRows = new Map();
-    this.isKlasemenOpen = false;
+    this.isKlasemenOpen = true;
 
-    // Tournament elements
-    this.tournamentBanner = document.getElementById('tournament-banner');
-    this.tournamentBannerTitle = document.getElementById('tournament-banner-title');
-    this.tournamentBannerDesc = document.getElementById('tournament-banner-desc');
-    this.tournamentIntroModal = document.getElementById('tournament-intro-modal');
-    this.tournamentClearedModal = document.getElementById('tournament-stage-cleared-modal');
-    this.tournamentPodiumModal = document.getElementById('tournament-podium-modal');
+    // Tournament elements (rendered directly in CanvasHUD)
+    this.tournamentBanner = null;
+    this.tournamentBannerTitle = null;
+    this.tournamentBannerDesc = null;
+    this.tournamentIntroModal = null;
+    this.tournamentClearedModal = null;
+    this.tournamentPodiumModal = null;
     this.tournamentSetupModal = document.getElementById('tournament-setup-modal');
 
 
@@ -962,225 +962,48 @@ export class UIManager {
    * Initializes Live Battle Standings / Klasemen DOM rows
    */
   initKlasemen(fighters) {
-    this.klasemenListEl = document.getElementById('klasemen-list');
-    this.klasemenPanel = document.getElementById('klasemen-panel');
-    this.klasemenChip = document.getElementById('klasemen-chip');
-    this.klasemenCountBadge = document.getElementById('klasemen-count-badge');
-    this.klasemenChipBadge = document.getElementById('klasemen-chip-badge');
-    this.canvasWrapper = document.getElementById('canvas-wrapper');
-
-    if (!this.klasemenListEl) return;
-    this.klasemenListEl.innerHTML = '';
-    this.klasemenRows = new Map();
-
-    // Group unique countries participating in this match
-    const uniqueCountries = [];
-    const seen = new Set();
-    for (let i = 0; i < fighters.length; i++) {
-      const c = fighters[i].country;
-      if (!seen.has(c.id)) {
-        seen.add(c.id);
-        uniqueCountries.push(c);
-      }
-    }
-
-    for (let i = 0; i < uniqueCountries.length; i++) {
-      const country = uniqueCountries[i];
-      const row = document.createElement('div');
-      row.className = 'klasemen-row';
-      row.id = `klasemen-row-${country.id}`;
-
-      const flagSvg = Flags.getFlagSvg(country.id);
-
-      row.innerHTML = `
-        <div class="klasemen-rank rank-normal">#${i + 1}</div>
-        <div class="klasemen-flag">${flagSvg}</div>
-        <div class="klasemen-info">
-          <div class="klasemen-name-row">
-            <span class="klasemen-country-name">${country.name}</span>
-            <span class="klasemen-hp-text">-- HP</span>
-          </div>
-          <div class="klasemen-hp-track">
-            <div class="klasemen-hp-fill" style="width: 100%;"></div>
-          </div>
-        </div>
-        <div class="klasemen-status alive">ALIVE</div>
-      `;
-
-      this.klasemenListEl.appendChild(row);
-
-      this.klasemenRows.set(country.id, {
-        countryId: country.id,
-        rowEl: row,
-        rankBadgeEl: row.querySelector('.klasemen-rank'),
-        nameEl: row.querySelector('.klasemen-country-name'),
-        hpTextEl: row.querySelector('.klasemen-hp-text'),
-        hpFillEl: row.querySelector('.klasemen-hp-fill'),
-        statusBadgeEl: row.querySelector('.klasemen-status'),
-      });
-    }
-
-    // Auto open Klasemen for large matches (> 8 fighters), or keep user preference
-    if (fighters.length > 8) {
-      this.showKlasemen();
-      if (this.canvasWrapper) this.canvasWrapper.classList.add('has-klasemen');
-    } else {
-      if (!this.isKlasemenOpen) {
-        this.hideKlasemen();
-      }
-      if (this.canvasWrapper) this.canvasWrapper.classList.remove('has-klasemen');
-    }
-
-    this.updateKlasemen();
+    // DOM #klasemen-panel has been removed; In-Engine Canvas Standings is used directly
   }
 
   /**
-   * Updates Klasemen rows and reorders them based on live battle standings:
-   * 1. Alive ranks above KO
-   * 2. Highest HP ranks top among alive ("hp yang paling tinggi paling atas")
-   * 3. Most recently eliminated ranks top among KO ("mati paling terakhir yang paling atas")
+   * Updates Klasemen rows
    */
   updateKlasemen() {
-    if (!this.klasemenRows || this.klasemenRows.size === 0 || !this.klasemenListEl) return;
-
-    const standings = this.game.getStandings();
-    if (!standings || standings.length === 0) return;
-
-    let aliveCountries = 0;
-    const totalCountries = standings.length;
-
-    for (let rank = 1; rank <= standings.length; rank++) {
-      const item = standings[rank - 1];
-      const rowData = this.klasemenRows.get(item.country.id);
-      if (!rowData) continue;
-
-      if (item.isAlive) {
-        aliveCountries++;
-      }
-
-      // 1. Rank styling (Gold for #1, Silver for #2, Bronze for #3)
-      rowData.rankBadgeEl.textContent = `#${rank}`;
-      rowData.rankBadgeEl.className =
-        'klasemen-rank ' +
-        (rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-normal');
-
-      // 2. Name & Team survivor count
-      if (item.totalCount > 1) {
-        rowData.nameEl.textContent = `${item.country.name} (${item.aliveCount}/${item.totalCount})`;
-      } else {
-        rowData.nameEl.textContent = item.country.name;
-      }
-
-      // 3. HP bar and text percentage
-      const pct = Math.max(0, Math.min(100, item.hpPercent));
-      rowData.hpFillEl.style.width = `${pct}%`;
-      if (pct > 50) {
-        rowData.hpFillEl.style.background = 'linear-gradient(90deg, #00FF87, #60EFA0)';
-      } else if (pct > 20) {
-        rowData.hpFillEl.style.background = 'linear-gradient(90deg, #FFAE00, #FFCC00)';
-      } else {
-        rowData.hpFillEl.style.background = 'linear-gradient(90deg, #FF1E56, #FF6080)';
-      }
-      rowData.hpTextEl.textContent = item.isAlive ? `${Math.round(item.totalHp)} HP` : '0 HP';
-
-      // 4. Status Badge & Row Dimming
-      if (item.isAlive) {
-        rowData.rowEl.classList.remove('is-ko', 'is-out');
-        rowData.statusBadgeEl.textContent = item.totalCount > 1 ? `${item.aliveCount} ALIVE` : 'ALIVE';
-        rowData.statusBadgeEl.className = 'klasemen-status alive';
-      } else {
-        rowData.rowEl.classList.add('is-ko', 'is-out');
-        rowData.statusBadgeEl.textContent = 'OUT';
-        rowData.statusBadgeEl.className = 'klasemen-status ko is-out';
-      }
-
-      // 5. Append child moves existing element to matching standings rank in DOM seamlessly
-      this.klasemenListEl.appendChild(rowData.rowEl);
-    }
-
-    // Update count badges
-    if (this.klasemenCountBadge) {
-      this.klasemenCountBadge.textContent = `${aliveCountries}/${totalCountries} ALIVE`;
-    }
-    if (this.klasemenChipBadge) {
-      this.klasemenChipBadge.textContent = `${aliveCountries} ALIVE`;
-    }
+    // Handled directly inside CanvasHUD (drawStandings)
   }
 
-  /**
-   * Synchronizes HUD bands visibility:
-   * When Klasemen is open, fighter-hud-cards are hidden to avoid redundant duplicate HP displays
-   * and keep the arena view clean and unobstructed.
-   */
   syncHudVisibility() {
-    const isKlasemenActive =
-      this.isKlasemenOpen &&
-      this.klasemenPanel &&
-      !this.klasemenPanel.classList.contains('hidden') &&
-      !this.klasemenPanel.classList.contains('minimized');
-
-    if (this.canvasWrapper) {
-      if (isKlasemenActive) {
-        this.canvasWrapper.classList.add('has-klasemen');
-      } else {
-        this.canvasWrapper.classList.remove('has-klasemen');
-      }
-    }
-
-    if (this.hudBandTop) {
-      this.hudBandTop.style.display = isKlasemenActive ? 'none' : '';
-    }
-    if (this.hudBandBottom) {
-      this.hudBandBottom.style.display = isKlasemenActive ? 'none' : '';
-    }
+    // No-op
   }
 
   showKlasemen() {
     this.isKlasemenOpen = true;
-    if (this.klasemenPanel) {
-      this.klasemenPanel.classList.remove('hidden', 'minimized');
+    if (this.game?.renderer?.hud) {
+      this.game.renderer.hud.showStandings = true;
     }
-    if (this.klasemenChip) {
-      this.klasemenChip.classList.add('hidden');
-    }
-    this.syncHudVisibility();
     const btn = document.getElementById('btn-klasemen');
     if (btn) btn.classList.add('active');
   }
 
   hideKlasemen() {
     this.isKlasemenOpen = false;
-    if (this.klasemenPanel) {
-      this.klasemenPanel.classList.add('hidden');
-      this.klasemenPanel.classList.remove('minimized');
+    if (this.game?.renderer?.hud) {
+      this.game.renderer.hud.showStandings = false;
     }
-    if (this.klasemenChip) {
-      this.klasemenChip.classList.add('hidden');
-    }
-    this.syncHudVisibility();
     const btn = document.getElementById('btn-klasemen');
     if (btn) btn.classList.remove('active');
   }
 
   minimizeKlasemen() {
-    if (this.klasemenPanel) {
-      this.klasemenPanel.classList.add('minimized');
-    }
-    if (this.klasemenChip) {
-      this.klasemenChip.classList.remove('hidden');
-    }
-    this.syncHudVisibility();
-    const btn = document.getElementById('btn-klasemen');
-    if (btn) btn.classList.remove('active');
+    this.hideKlasemen();
   }
 
   toggleKlasemen() {
-    if (this.klasemenPanel?.classList.contains('minimized')) {
+    const nextState = this.game?.renderer?.hud ? !this.game.renderer.hud.showStandings : !this.isKlasemenOpen;
+    if (nextState) {
       this.showKlasemen();
-    } else if (this.isKlasemenOpen && !this.klasemenPanel?.classList.contains('hidden')) {
-      this.hideKlasemen();
     } else {
-      this.showKlasemen();
+      this.hideKlasemen();
     }
   }
 
@@ -1340,152 +1163,42 @@ export class UIManager {
      -------------------------------------------------------------------------- */
 
   /**
-   * Displays the 30-second country introduction showcase modal
+   * Displays tournament intro (handled directly by CanvasHUD)
    */
   showTournamentIntro(stage, countries, conditions, secondsLeft = 30) {
-    // Hide competing modals
     if (this.settingsModal) this.settingsModal.classList.remove('active');
     if (this.winnerModal) this.winnerModal.classList.remove('active');
-    if (this.tournamentClearedModal) this.tournamentClearedModal.classList.remove('active');
-    if (this.tournamentPodiumModal) this.tournamentPodiumModal.classList.remove('active');
-
-    const stageTitleEl = document.getElementById('tournament-intro-stage-title');
-    const stageSubEl = document.getElementById('tournament-intro-stage-sub');
-    const timerEl = document.getElementById('tournament-timer-num');
-    const condGrid = document.getElementById('tournament-conditions-grid');
-    const countEl = document.getElementById('tournament-countries-count');
-    const introGrid = document.getElementById('tournament-intro-grid');
-
-    if (stageTitleEl) stageTitleEl.textContent = stage.name.toUpperCase();
-    if (stageSubEl) stageSubEl.textContent = stage.desc;
-    if (timerEl) timerEl.textContent = secondsLeft;
-
-    // Populate randomized conditions preview tags
-    if (condGrid && conditions) {
-      condGrid.innerHTML = `
-        <div class="condition-pill"><span class="condition-pill-label">Ring:</span><span class="condition-pill-val">${conditions.arenaShapeName}</span></div>
-        <div class="condition-pill"><span class="condition-pill-label">Theme:</span><span class="condition-pill-val">${conditions.themeName}</span></div>
-        <div class="condition-pill"><span class="condition-pill-label">Obstacle:</span><span class="condition-pill-val">${conditions.obstacleName}</span></div>
-        <div class="condition-pill"><span class="condition-pill-label">Gravity:</span><span class="condition-pill-val">${conditions.gravityName}</span></div>
-        <div class="condition-pill"><span class="condition-pill-label">Weather:</span><span class="condition-pill-val">${conditions.weatherName}</span></div>
-        <div class="condition-pill"><span class="condition-pill-label">Wind:</span><span class="condition-pill-val">${conditions.windName}</span></div>
-      `;
-    }
-
-    if (countEl) {
-      countEl.textContent = `PARTICIPATING COUNTRIES (${countries.length}):`;
-    }
-
-    // Populate all countries in this stage
-    if (introGrid) {
-      introGrid.innerHTML = countries
-        .map((c) => {
-          const flagSvg = Flags.getFlagSvg(c.id);
-          const bodyColor = c.bodyColor || c.primaryColor;
-          return `
-          <div class="t-country-card">
-            <div class="t-country-flag">${flagSvg}</div>
-            <span class="t-country-name">${c.name}</span>
-            <span class="t-country-color-dot" style="background-color: ${bodyColor};" title="Stickman Color"></span>
-          </div>
-        `;
-        })
-        .join('');
-    }
-
-    if (this.tournamentIntroModal) {
-      this.tournamentIntroModal.classList.add('active');
-    }
   }
 
   updateTournamentIntroTimer(secondsLeft) {
-    const timerEl = document.getElementById('tournament-timer-num');
-    if (timerEl) {
-      timerEl.textContent = Math.max(0, secondsLeft);
-    }
+    // Handled directly inside CanvasHUD
   }
 
   hideTournamentIntro() {
-    if (this.tournamentIntroModal) {
-      this.tournamentIntroModal.classList.remove('active');
-    }
+    // Handled directly inside CanvasHUD
   }
 
   setTournamentBanner(title, desc) {
-    if (this.tournamentBannerTitle) this.tournamentBannerTitle.textContent = title;
-    if (this.tournamentBannerDesc) this.tournamentBannerDesc.textContent = desc;
-    if (this.tournamentBanner) this.tournamentBanner.classList.add('active');
+    // Handled directly inside CanvasHUD
   }
 
   removeTournamentBanner() {
-    if (this.tournamentBanner) {
-      this.tournamentBanner.classList.remove('active');
-    }
+    // Handled directly inside CanvasHUD
   }
 
   /**
-   * Displays the Stage Cleared modal with qualified & eliminated country lists
+   * Displays Stage Cleared (handled directly by CanvasHUD)
    */
   showTournamentStageCleared(stage, nextStage, qualifiers, eliminated) {
-    const titleEl = document.getElementById('cleared-stage-title');
-    const subEl = document.getElementById('cleared-stage-sub');
-    const qGrid = document.getElementById('cleared-qualifiers-grid');
-    const eGrid = document.getElementById('cleared-eliminated-grid');
-    const timerEl = document.getElementById('cleared-countdown-text');
-
-    if (titleEl) titleEl.textContent = `${stage.name.toUpperCase()} COMPLETE!`;
-    if (subEl) {
-      const nextName = nextStage ? nextStage.name : 'Next Round';
-      subEl.textContent = `${qualifiers.length} Countries Qualified for ${nextName}!`;
-    }
-
-    if (qGrid) {
-      qGrid.innerHTML = qualifiers
-        .map(
-          (c) => `
-        <div class="cleared-item qualifier">
-          <div class="t-country-flag" style="width:20px;height:14px;">${Flags.getFlagSvg(c.id)}</div>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.name}</span>
-        </div>
-      `
-        )
-        .join('');
-    }
-
-    if (eGrid) {
-      eGrid.innerHTML = eliminated
-        .map(
-          (c) => `
-        <div class="cleared-item out">
-          <div class="t-country-flag" style="width:20px;height:14px;">${Flags.getFlagSvg(c.id)}</div>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.name}</span>
-        </div>
-      `
-        )
-        .join('');
-    }
-
-    if (timerEl) {
-      const nextName = nextStage ? nextStage.name : 'Next Round';
-      timerEl.textContent = `Advancing to ${nextName} in 6 seconds...`;
-    }
-
-    if (this.tournamentClearedModal) {
-      this.tournamentClearedModal.classList.add('active');
-    }
+    // Handled directly inside CanvasHUD
   }
 
   updateStageClearedCountdown(seconds) {
-    const timerEl = document.getElementById('cleared-countdown-text');
-    if (timerEl) {
-      timerEl.textContent = `Advancing to next round in ${Math.max(0, seconds)} seconds...`;
-    }
+    // Handled directly inside CanvasHUD
   }
 
   hideTournamentStageCleared() {
-    if (this.tournamentClearedModal) {
-      this.tournamentClearedModal.classList.remove('active');
-    }
+    // Handled directly inside CanvasHUD
   }
 
   showTournamentSetupModal() {
@@ -1501,74 +1214,18 @@ export class UIManager {
   }
 
   /**
-   * Displays the Grand Final Podium (Winner)
-   * @param {Array} topResults 
-   * @param {boolean} hasNextTournament Whether there is another tournament queued in the series
-   * @param {number} secondsLeft Intermission seconds left
+   * Displays the Grand Final Podium (handled directly by CanvasHUD)
    */
   showTournamentPodium(topResults, hasNextTournament = false, secondsLeft = 30) {
-    const displayEl = document.getElementById('podium-display');
-    if (!displayEl || !topResults || topResults.length === 0) return;
-
-    // Sole winner / champion
-    const champion = topResults[0];
-    const flagSvg = Flags.getFlagSvg(champion.country.id);
-
-    displayEl.innerHTML = `
-      <div class="tournament-winner-spotlight">
-        <div class="winner-trophy-halo">
-          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#FFD700" stroke-width="2.2">
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
-            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
-            <path d="M4 22h16"/>
-            <path d="M10 14.66V17c0 .55-.45 1-1 1H7v4h10v-4h-2c-.55 0-1-.45-1-1v-2.34"/>
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/>
-          </svg>
-        </div>
-        <div class="winner-flag-hero">
-          ${flagSvg}
-        </div>
-        <h2 class="podium-fighter-name" style="font-size: 1.85rem; margin: 4px 0; color: #FFF; text-shadow: 0 0 20px rgba(255, 215, 0, 0.6);">${champion.country.name.toUpperCase()}</h2>
-        <div class="winner-crown-badge">
-          <span>TOURNAMENT CHAMPION</span>
-        </div>
-        <p class="winner-stats-pill">
-          Congratulations! Conquered all obstacles and defeated 64 competing nations!
-        </p>
-        <div style="margin-top: 14px;">
-          <button id="btn-podium-action" class="action-btn" style="padding: 10px 24px; font-size: 0.95rem; display: inline-flex; align-items: center; gap: 8px;">
-            <span>${hasNextTournament ? 'NEXT TOURNAMENT' : 'CLOSE & RETURN TO MENU'}</span>
-          </button>
-        </div>
-      </div>
-    `;
-
-    const btnPodiumAction = document.getElementById('btn-podium-action');
-    if (btnPodiumAction) {
-      btnPodiumAction.onclick = () => {
-        if (this.game.tournament) {
-          if (hasNextTournament) {
-            this.game.tournament.skipPodiumTimerAndStartNext();
-          } else {
-            this.game.tournament.exitTournament();
-          }
-        }
-      };
-    }
-
-    if (this.tournamentPodiumModal) {
-      this.tournamentPodiumModal.classList.add('active');
-    }
+    // Handled directly inside CanvasHUD (drawTournamentPodium)
   }
 
   updatePodiumNextCountdown(seconds) {
-    // Info turnamen selanjutnya & countdown seconds dihapus sesuai permintaan
+    // Handled directly inside CanvasHUD
   }
 
   hideTournamentPodium() {
-    if (this.tournamentPodiumModal) {
-      this.tournamentPodiumModal.classList.remove('active');
-    }
+    // Handled directly inside CanvasHUD
   }
 }
 
