@@ -394,6 +394,7 @@ export class StickmanFighter {
     // Torso anchor points relative to body center (0,0)
     const neckY = -18;
     const hipY = 10;
+    const shoulderY = neckY + 4;
 
     // --- LEGS (Articulated Hip -> Knee -> Foot Cartoon Animation) ---
     const legLength = CONFIG.FIGHTER.LEG_LENGTH;
@@ -482,56 +483,48 @@ export class StickmanFighter {
     ctx.lineTo(0, neckY);
     ctx.stroke();
 
-    // --- ARMS ---
-    const shoulderY = neckY + 4;
-    let leftHandX = -12, leftHandY = shoulderY + 12;
-    let rightHandX = 12, rightHandY = shoulderY + 12;
+    // --- ARMS (Combat, Walk, and KO Poses) ---
+    if (!this.isVictoryPose) {
+      let leftHandX = -12, leftHandY = shoulderY + 12;
+      let rightHandX = 12, rightHandY = shoulderY + 12;
 
-    if (this.isKO) {
-      leftHandX = -18; leftHandY = shoulderY - 8;
-      rightHandX = 18; rightHandY = shoulderY - 10;
-    } else if (this.isVictoryPose) {
-      // Victory celebration: both hands raised high in the air \o/ pumping rhythmically
-      const pump = Math.sin((this.celebrateTime || 0) * 8) * 5;
-      const sway = Math.cos((this.celebrateTime || 0) * 6) * 3;
-      leftHandX = -14 + sway;
-      leftHandY = shoulderY - 22 + pump;
-      rightHandX = 14 + sway;
-      rightHandY = shoulderY - 22 - pump;
-    } else if (this.punchAnim > 0) {
-      const punchReach = 18 + Math.sin(this.punchAnim * Math.PI) * 22;
-      if (this.facing > 0) {
-        rightHandX = punchReach;
-        rightHandY = shoulderY + 2;
-        leftHandX = -8;
-        leftHandY = shoulderY + 8;
-      } else {
-        leftHandX = -punchReach;
-        leftHandY = shoulderY + 2;
-        rightHandX = 8;
-        rightHandY = shoulderY + 8;
+      if (this.isKO) {
+        leftHandX = -18; leftHandY = shoulderY - 8;
+        rightHandX = 18; rightHandY = shoulderY - 10;
+      } else if (this.punchAnim > 0) {
+        const punchReach = 18 + Math.sin(this.punchAnim * Math.PI) * 22;
+        if (this.facing > 0) {
+          rightHandX = punchReach;
+          rightHandY = shoulderY + 2;
+          leftHandX = -8;
+          leftHandY = shoulderY + 8;
+        } else {
+          leftHandX = -punchReach;
+          leftHandY = shoulderY + 2;
+          rightHandX = 8;
+          rightHandY = shoulderY + 8;
+        }
+      } else if (isMoving) {
+        const armPhase = this.walkCycle;
+        leftHandX = -Math.sin(armPhase) * 11;
+        leftHandY = shoulderY + 12;
+        rightHandX = Math.sin(armPhase) * 11;
+        rightHandY = shoulderY + 12;
       }
-    } else if (isMoving) {
-      const armPhase = this.walkCycle;
-      leftHandX = -Math.sin(armPhase) * 11;
-      leftHandY = shoulderY + 12;
-      rightHandX = Math.sin(armPhase) * 11;
-      rightHandY = shoulderY + 12;
-    }
 
-    // Back arm
-    ctx.strokeStyle = stickColor;
-    ctx.lineWidth = 3.2;
-    ctx.beginPath();
-    ctx.moveTo(0, shoulderY);
-    ctx.lineTo(this.facing > 0 ? leftHandX : rightHandX, this.facing > 0 ? leftHandY : rightHandY);
-    ctx.stroke();
+      // Back arm
+      ctx.strokeStyle = stickColor;
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.moveTo(0, shoulderY);
+      ctx.lineTo(this.facing > 0 ? leftHandX : rightHandX, this.facing > 0 ? leftHandY : rightHandY);
+      ctx.stroke();
 
-    // Front arm
-    ctx.beginPath();
-    ctx.moveTo(0, shoulderY);
-    ctx.lineTo(this.facing > 0 ? rightHandX : leftHandX, this.facing > 0 ? rightHandY : leftHandY);
-    ctx.stroke();
+      // Front arm
+      ctx.beginPath();
+      ctx.moveTo(0, shoulderY);
+      ctx.lineTo(this.facing > 0 ? rightHandX : leftHandX, this.facing > 0 ? rightHandY : leftHandY);
+      ctx.stroke();
 
     // Active hand coordinates
     const activeHandX = this.facing > 0 ? rightHandX : leftHandX;
@@ -670,9 +663,10 @@ export class StickmanFighter {
       // Standard fist
       const gloveRadius = this.punchAnim > 0 ? 6.5 : 4.5;
       ctx.fillStyle = this.punchAnim > 0 ? accentColor : stickColor;
-      ctx.beginPath();
-      ctx.arc(activeHandX, activeHandY, gloveRadius, 0, Math.PI * 2);
-      ctx.fill();
+        ctx.beginPath();
+        ctx.arc(activeHandX, activeHandY, gloveRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // --- HEAD (FLAG CIRCLE) ---
@@ -729,6 +723,76 @@ export class StickmanFighter {
       ctx.fill();
     }
     ctx.restore();
+
+    // --- VICTORY CELEBRATION ARMS & FISTS (FOREGROUND LAYER - NEVER MASKED BY HEAD) ---
+    if (this.isVictoryPose) {
+      // Victory celebration: both hands raised high in the air \o/ pumping rhythmically
+      const pumpL = Math.sin((this.celebrateTime || 0) * 8) * 6;
+      const pumpR = Math.cos((this.celebrateTime || 0) * 8) * 6;
+      const sway = Math.sin((this.celebrateTime || 0) * 4) * 3;
+
+      // Left arm reaches up & out past the head circle
+      const leftElbowX = -18 + sway * 0.5;
+      const leftElbowY = shoulderY - 8 + pumpL * 0.4;
+      const leftHandX = -28 + sway;
+      const leftHandY = shoulderY - 26 + pumpL;
+
+      // Right arm reaches up & out past the head circle
+      const rightElbowX = 18 + sway * 0.5;
+      const rightElbowY = shoulderY - 8 + pumpR * 0.4;
+      const rightHandX = 28 + sway;
+      const rightHandY = shoulderY - 26 + pumpR;
+
+      // Draw Articulated Arms (Shoulder -> Elbow -> Hand)
+      ctx.strokeStyle = stickColor;
+      ctx.lineWidth = 3.6;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      // Left arm
+      ctx.beginPath();
+      ctx.moveTo(0, shoulderY);
+      ctx.lineTo(leftElbowX, leftElbowY);
+      ctx.lineTo(leftHandX, leftHandY);
+      ctx.stroke();
+
+      // Right arm
+      ctx.beginPath();
+      ctx.moveTo(0, shoulderY);
+      ctx.lineTo(rightElbowX, rightElbowY);
+      ctx.lineTo(rightHandX, rightHandY);
+      ctx.stroke();
+
+      // Draw Fists / Gloves on BOTH hands
+      const fistRadius = 5.0;
+      ctx.fillStyle = accentColor || stickColor;
+      ctx.strokeStyle = '#0C0E17';
+      ctx.lineWidth = 1.6;
+
+      // Left fist
+      ctx.beginPath();
+      ctx.arc(leftHandX, leftHandY, fistRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Right fist (or holding equipped weapon high in air)
+      if (this.equippedItem) {
+        ctx.save();
+        ctx.translate(rightHandX, rightHandY);
+        ctx.scale(this.facing, 1);
+        ctx.beginPath();
+        ctx.arc(0, 0, fistRadius + 2, 0, Math.PI * 2);
+        ctx.fillStyle = this.equippedItem.color || '#FFE600';
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        ctx.beginPath();
+        ctx.arc(rightHandX, rightHandY, fistRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
 
     // Floating Golden Crown above Tournament Champion's head
     if (this.isChampionCelebration && !this.isKO) {
