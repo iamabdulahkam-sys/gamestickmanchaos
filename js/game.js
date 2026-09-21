@@ -68,6 +68,7 @@ export class GameManager {
     this.fpsTimer = 0;
     this.winnerDeclared = false;
     this.confettiTimer = 0;
+    this.countdownTimer = null;
     this.eliminationCounter = 0;
     this.teamEliminations = new Map();
     this.announcedEliminations = new Set();
@@ -306,6 +307,10 @@ export class GameManager {
   }
 
   startNewMatch() {
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
     this.winnerDeclared = false;
     this.confettiTimer = 0;
     this.eliminationCounter = 0;
@@ -457,11 +462,16 @@ export class GameManager {
   runCountdown() {
     this.state = 'COUNTDOWN';
 
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+
     let count = 3;
     this.ui.showCountdown(count.toString());
     sound.playCountdown(count);
 
-    const timer = setInterval(() => {
+    this.countdownTimer = setInterval(() => {
       count--;
       if (count > 0) {
         this.ui.showCountdown(count.toString());
@@ -470,7 +480,10 @@ export class GameManager {
         this.ui.showCountdown('FIGHT!', true);
         sound.playCountdown(0);
         this.state = 'BATTLE';
-        clearInterval(timer);
+        if (this.countdownTimer) {
+          clearInterval(this.countdownTimer);
+          this.countdownTimer = null;
+        }
       }
     }, 850);
   }

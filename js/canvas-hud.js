@@ -1574,6 +1574,14 @@ export class CanvasHUD {
     }
 
     const dur = 1.1; // Snappy 1.1 seconds lifetime
+    this.announcer = {
+      text: `${countryName.toUpperCase()} OUT!`,
+      subText: 'ELIMINATED',
+      type: 'team_out',
+      country: country,
+      timer: dur,
+      duration: dur,
+    };
     this.eliminationFeed.push({
       id: id,
       country: country,

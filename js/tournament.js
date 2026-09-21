@@ -285,6 +285,15 @@ export class TournamentManager {
 
     // Reset any previous match in background and show the new arena preview
     this.game.state = 'LOBBY';
+    if (this.game.countdownTimer) {
+      clearInterval(this.game.countdownTimer);
+      this.game.countdownTimer = null;
+    }
+    if (this.game.renderer?.hud?.announcer) {
+      this.game.renderer.hud.announcer.timer = 0;
+      this.game.renderer.hud.announcer.text = '';
+      this.game.renderer.hud.announcer.type = 'none';
+    }
     this.game.setArenaShape(this.stageConditions.arenaShape);
     this.game.setTheme(this.stageConditions.themeKey);
     this.game.setObstacle(this.stageConditions.obstacleKey);
