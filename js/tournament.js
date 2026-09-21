@@ -378,11 +378,16 @@ export class TournamentManager {
       return false;
     }
 
+    if (!this.game.fighters || this.game.fighters.length === 0) {
+      return false;
+    }
+
     const stage = this.stages[this.currentStageIndex];
     if (!stage) return false;
 
-    // Check if remaining alive countries has reached or dropped below the qualification threshold
-    if (aliveCountryIds.size <= stage.advanceCount && aliveCountryIds.size > 0) {
+    // Trigger stage cleared if remaining alive countries has reached or dropped below the qualification threshold
+    // (Handles aliveCountryIds.size <= stage.advanceCount, including 0 when all remaining fighters are KO'd simultaneously)
+    if (aliveCountryIds.size <= stage.advanceCount) {
       this.isStageBattleActive = false;
       this.onStageCleared(aliveFighters, aliveCountryIds);
       return true;
@@ -408,16 +413,18 @@ export class TournamentManager {
 
     const stage = this.stages[this.currentStageIndex];
 
-    // Identify qualifying countries (survivors) and eliminated countries
-    const qualifiers = [];
-    const eliminated = [];
-
     // Get current standings to determine exact placement
     const standings = this.game.getStandings();
 
+    // Identify qualifying countries:
+    // Top stage.advanceCount countries from standings qualify (handles simultaneous elimination cleanly)
+    const targetQualifiersCount = Math.min(standings.length, stage.advanceCount);
+    const qualifiers = [];
+    const eliminated = [];
+
     for (let i = 0; i < standings.length; i++) {
       const entry = standings[i];
-      if (entry.isAlive || aliveCountryIds.has(entry.country.id)) {
+      if (i < targetQualifiersCount) {
         qualifiers.push(entry.country);
       } else {
         eliminated.push(entry.country);
@@ -441,6 +448,13 @@ export class TournamentManager {
 
       const top4Results = standings.slice(0, 4);
       this.podiumResults = top4Results;
+
+      // Crown champion and declare game result state so engine and HUD celebrate victory
+      const championCountry = top4Results[0]?.country || top4Results[0];
+      this.game.winner = championCountry;
+      this.game.winnerDeclared = true;
+      this.game.state = 'RESULT';
+
       const hasNextTournament = this.completedTournaments < this.totalTournaments;
 
       setTimeout(() => {

@@ -693,11 +693,13 @@ export class GameManager {
       if (stageHandled) return;
     }
 
-    // Check if only 1 country remains alive (Regular Match)
-    if (!this.tournament?.isActive && aliveCountryIds.size === 1 && !this.winnerDeclared && this.fighters.length > 1) {
+    // Check if 1 or 0 countries remain alive (Regular Match)
+    if (!this.tournament?.isActive && aliveCountryIds.size <= 1 && !this.winnerDeclared && this.fighters.length > 1) {
       this.winnerDeclared = true;
       this.state = 'RESULT';
-      const winner = aliveFighters[0];
+      const standings = this.getStandings();
+      const winner = aliveFighters.length > 0 ? aliveFighters[0] : (standings[0]?.country ? { ...standings[0].country, ...standings[0] } : this.fighters[0]);
+      this.winner = winner;
 
       this.bombs.clear();
       this.weather.stopLightning();
