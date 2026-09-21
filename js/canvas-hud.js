@@ -1912,7 +1912,7 @@ export class CanvasHUD {
   drawTournamentPodium(ctx, width, height, tournament) {
     this.interactiveButtons = [];
     const cardW = 280;
-    const cardH = 370;
+    const cardH = 260;
     const cardX = width - cardW - 24;
     const cardY = (height - cardH) / 2;
 
@@ -2004,44 +2004,6 @@ export class CanvasHUD {
       ctx.textBaseline = 'middle';
       ctx.fillText('Conquered all 64 nations!', trophyCx, cardY + 226);
     }
-
-    // 6. Action Button
-    const btnW = cardW - 36;
-    const btnH = 38;
-    const btnX = cardX + 18;
-    const btnY = cardY + cardH - 52;
-
-    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
-    btnGrad.addColorStop(0, '#00FF87');
-    btnGrad.addColorStop(1, '#60EFFF');
-    ctx.fillStyle = btnGrad;
-    ctx.beginPath();
-    this.roundRect(ctx, btnX, btnY, btnW, btnH, 10);
-    ctx.fill();
-
-    const btnLabel = tournament.isShowingPodiumCountdown && tournament.completedTournaments < tournament.totalTournaments
-      ? 'NEXT TOURNAMENT'
-      : 'PLAY AGAIN';
-    ctx.font = '900 13.5px Impact, "Arial Black", sans-serif';
-    ctx.fillStyle = '#0C1220';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(btnLabel, trophyCx, btnY + btnH / 2);
-
-    this.interactiveButtons.push({
-      action: 'tournament_next',
-      x: btnX,
-      y: btnY,
-      w: btnW,
-      h: btnH,
-      onClick: () => {
-        if (tournament.isShowingPodiumCountdown && tournament.completedTournaments < tournament.totalTournaments) {
-          tournament.skipPodiumTimerAndStartNext();
-        } else {
-          tournament.exitTournament();
-        }
-      },
-    });
 
     ctx.restore();
   }
