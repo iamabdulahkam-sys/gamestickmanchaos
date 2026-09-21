@@ -45,8 +45,11 @@ export class GameManager {
     this.effects = new EffectsManager();
     this.ai = new AIManager();
     this.weather = new WeatherManager();
+    this.weather.game = this;
     this.items = new ItemManager();
+    this.items.game = this;
     this.bombs = new BombManager();
+    this.bombs.game = this;
     this.sound = sound;
     this.renderer = new Renderer(canvas);
     this.ui = new UIManager(this);
@@ -127,6 +130,15 @@ export class GameManager {
         this.renderer.addWallImpactVisual(pos.x, pos.y);
       }
     };
+  }
+
+  /**
+   * Dispatches a real-time event into the in-engine Live Chaos & Battle Feed (CanvasHUD)
+   */
+  addBattleEvent(event) {
+    if (this.renderer?.hud?.addBattleEvent) {
+      this.renderer.hud.addBattleEvent(event);
+    }
   }
 
   init() {
@@ -326,6 +338,9 @@ export class GameManager {
     this.ai.clear();
     this.items.clear();
     this.bombs.clear();
+    if (this.renderer?.hud) {
+      this.renderer.hud.clearBattleLog();
+    }
 
     // Clean up previous fighters
     for (let i = 0; i < this.fighters.length; i++) {
@@ -454,6 +469,15 @@ export class GameManager {
 
     // Initialize external HUD (adaptive: individual or team leaderboard)
     this.ui.initFighterHUD(this.fighters);
+
+    // Log match start event in Live Chaos Feed
+    this.addBattleEvent({
+      type: 'info',
+      icon: '🏁',
+      text: `Battle Commenced (${this.fighters.length} Nations)`,
+      detail: 'START',
+      color: '#00F0FF',
+    });
 
     // Begin Countdown sequence (3, 2, 1, FIGHT!)
     this.runCountdown();
@@ -684,6 +708,19 @@ export class GameManager {
         this.announcedEliminations.add(f.country.id);
         f.country.teamAnnouncedOut = true;
         this.ui.showTeamEliminatedAnnounce(f.country);
+
+        // Record Country OUT in Live Chaos Feed
+        const currentStandings = this.getStandings ? this.getStandings() : [];
+        const found = currentStandings.find((s) => s.country?.id === f.country.id);
+        const rankNum = found ? (found.rank || (currentStandings.indexOf(found) + 1)) : (aliveCountryIds.size + 1);
+        this.addBattleEvent({
+          type: 'out',
+          icon: '❌',
+          country: f.country,
+          text: `${f.country.name} OUT (#${rankNum})`,
+          detail: 'OUT',
+          color: '#EF4444',
+        });
       }
     }
 

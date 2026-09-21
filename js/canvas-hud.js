@@ -33,6 +33,10 @@ export class CanvasHUD {
     // In-Engine Elimination Feed (Transparent, Snappy ~1.1s, Multi-Out Stacking)
     this.eliminationFeed = [];
 
+    // In-Engine Live Chaos & Battle Feed (Right Panel)
+    this.battleLog = [];
+    this.battleLogIdCounter = 1;
+
     this.initFlagImages();
 
     if (this.renderer?.canvas) {
@@ -68,6 +72,34 @@ export class CanvasHUD {
         }
       }
     }
+  }
+
+  /**
+   * Adds a new real-time chaos event to the right-side Live Battle Feed
+   */
+  addBattleEvent(event) {
+    if (!event) return;
+    const item = {
+      id: this.battleLogIdCounter++,
+      type: event.type || 'info', // 'out', 'item', 'bomb', 'lightning', 'weather', 'projectile'
+      icon: event.icon || '⚔️',
+      country: event.country || null,
+      text: event.text || '',
+      detail: event.detail || '',
+      color: event.color || '#00E5FF',
+      time: Date.now(),
+    };
+    this.battleLog.unshift(item);
+    if (this.battleLog.length > 25) {
+      this.battleLog.length = 25;
+    }
+  }
+
+  /**
+   * Clears the battle log (invoked on match reset / stage restart)
+   */
+  clearBattleLog() {
+    this.battleLog = [];
   }
 
   /**
@@ -701,9 +733,11 @@ export class CanvasHUD {
     const roadmapH = isTournament ? 32 : 0;
     const hazardH = 24;
     const feedHeaderH = 22;
-    const maxFeedItems = 6;
-    const visibleFeedCount = Math.min(maxFeedItems, eliminated.length);
-    const feedBodyH = visibleFeedCount === 0 ? 38 : visibleFeedCount * 20 + 4;
+    const maxFeedItems = 7;
+    const feedList = this.battleLog && this.battleLog.length > 0 ? this.battleLog : [];
+    const visibleFeedCount = Math.min(maxFeedItems, feedList.length);
+    const feedRowH = 21;
+    const feedBodyH = visibleFeedCount === 0 ? 38 : visibleFeedCount * (feedRowH + 2) + 2;
     const footerH = 22;
 
     const panelH =
@@ -897,24 +931,24 @@ export class CanvasHUD {
 
     curY += hazardH + 6;
 
-    // 6. Section 4: Live Elimination Feed Header
+    // 6. Section 4: Live Chaos Battle Feed Header
     ctx.font = 'bold 10px "Segoe UI", sans-serif';
     ctx.fillStyle = '#00F0FF';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText('📜  RECENT OUTS', contentX + 2, curY + feedHeaderH / 2);
+    ctx.fillText('⚡  LIVE CHAOS FEED', contentX + 2, curY + feedHeaderH / 2);
 
-    if (eliminated.length > 0) {
+    if (feedList.length > 0) {
       ctx.font = 'bold 8.5px "Segoe UI", monospace';
-      ctx.fillStyle = '#EF4444';
+      ctx.fillStyle = '#94A3B8';
       ctx.textAlign = 'right';
-      ctx.fillText(`${eliminated.length} OUT`, contentX + contentW - 2, curY + feedHeaderH / 2);
+      ctx.fillText(`${feedList.length} LOGS`, contentX + contentW - 2, curY + feedHeaderH / 2);
     }
 
     curY += feedHeaderH;
 
-    // Section 4b: Elimination Feed Items
-    if (eliminated.length === 0) {
+    // Section 4b: Live Chaos Feed Items
+    if (feedList.length === 0) {
       // Empty state
       ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
       ctx.beginPath();
@@ -925,66 +959,112 @@ export class CanvasHUD {
       ctx.fillStyle = '#64748B';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('⚔️  All nations in battle', contentX + contentW / 2, curY + feedBodyH / 2 - 6);
+      ctx.fillText('⚔️  Battle in progress...', contentX + contentW / 2, curY + feedBodyH / 2 - 6);
       ctx.font = '8px "Segoe UI", sans-serif';
       ctx.fillStyle = '#475569';
-      ctx.fillText('Out countries will appear here', contentX + contentW / 2, curY + feedBodyH / 2 + 7);
+      ctx.fillText('Events will appear as chaos unfolds', contentX + contentW / 2, curY + feedBodyH / 2 + 7);
     } else {
-      const rowH = 20;
       for (let i = 0; i < visibleFeedCount; i++) {
-        const item = eliminated[i];
-        const rowY = curY + i * (rowH + 1);
+        const item = feedList[i];
+        const rowY = curY + i * (feedRowH + 2);
+        const isLatest = i === 0;
 
-        // Row background
-        ctx.fillStyle = i === 0 ? 'rgba(239, 68, 68, 0.16)' : 'rgba(239, 68, 68, 0.07)';
+        // Row background with subtle tint based on event type
+        let bgFill = 'rgba(255, 255, 255, 0.03)';
+        let borderColor = 'rgba(255, 255, 255, 0.06)';
+        if (item.type === 'out') {
+          bgFill = isLatest ? 'rgba(239, 68, 68, 0.20)' : 'rgba(239, 68, 68, 0.09)';
+          borderColor = 'rgba(239, 68, 68, 0.4)';
+        } else if (item.type === 'bomb') {
+          bgFill = isLatest ? 'rgba(249, 115, 22, 0.20)' : 'rgba(249, 115, 22, 0.09)';
+          borderColor = 'rgba(249, 115, 22, 0.4)';
+        } else if (item.type === 'lightning') {
+          bgFill = isLatest ? 'rgba(251, 191, 36, 0.20)' : 'rgba(251, 191, 36, 0.09)';
+          borderColor = 'rgba(251, 191, 36, 0.4)';
+        } else if (item.type === 'item') {
+          bgFill = isLatest ? 'rgba(0, 240, 255, 0.18)' : 'rgba(0, 240, 255, 0.08)';
+          borderColor = 'rgba(0, 240, 255, 0.35)';
+        } else if (item.type === 'weather') {
+          bgFill = isLatest ? 'rgba(56, 189, 248, 0.20)' : 'rgba(56, 189, 248, 0.09)';
+          borderColor = 'rgba(56, 189, 248, 0.4)';
+        } else if (item.type === 'projectile') {
+          bgFill = isLatest ? 'rgba(244, 63, 94, 0.20)' : 'rgba(244, 63, 94, 0.09)';
+          borderColor = 'rgba(244, 63, 94, 0.4)';
+        }
+
+        ctx.fillStyle = bgFill;
         ctx.beginPath();
-        this.roundRect(ctx, contentX, rowY, contentW, rowH, 4);
+        this.roundRect(ctx, contentX, rowY, contentW, feedRowH, 4);
         ctx.fill();
 
-        if (i === 0) {
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.35)';
+        // Left accent bar
+        ctx.fillStyle = item.color || '#00E5FF';
+        ctx.beginPath();
+        this.roundRect(ctx, contentX, rowY, 3, feedRowH, [4, 0, 0, 4]);
+        ctx.fill();
+
+        if (isLatest) {
+          ctx.strokeStyle = borderColor;
           ctx.lineWidth = 1;
           ctx.stroke();
         }
 
-        // Rank Number
-        ctx.font = 'bold 8.5px "Courier New", monospace';
-        ctx.fillStyle = '#94A3B8';
+        // Left Icon
+        const iconX = contentX + 7;
+        const iconCy = rowY + feedRowH / 2;
+
+        ctx.font = '10px "Segoe UI Emoji", -apple-system, sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`#${item.rank}`, contentX + 4, rowY + rowH / 2);
+        ctx.fillText(item.icon || '⚔️', iconX, iconCy);
 
-        // Flag Icon
-        const flagR = 5;
-        const flagCx = contentX + 28;
-        const flagCy = rowY + rowH / 2;
+        // Country Flag (if item has country)
+        let textStartX = iconX + 16;
         if (item.country) {
+          const flagR = 5;
+          const flagCx = textStartX + flagR;
+          const flagCy = iconCy;
           Flags.drawFlagHead(ctx, item.country, flagCx, flagCy, flagR);
+          textStartX += flagR * 2 + 4;
         }
 
-        // Country Name
-        const nameX = flagCx + flagR + 5;
-        const rawName = item.country?.name || item.name || 'Country';
-        const displayName = rawName.length > 10 ? rawName.substring(0, 9) + '…' : rawName;
+        // Right Detail Pill (e.g. '-28', 'OUT', 'KATANA', 'SHIFT')
+        let rightPillW = 0;
+        if (item.detail) {
+          ctx.font = 'bold 8px "Segoe UI", sans-serif';
+          const detailStr = String(item.detail).toUpperCase();
+          rightPillW = ctx.measureText(detailStr).width + 8;
+          const pillX = contentX + contentW - rightPillW - 3;
+          const pillY = iconCy - 6.5;
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+          ctx.beginPath();
+          this.roundRect(ctx, pillX, pillY, rightPillW, 13, 3);
+          ctx.fill();
+
+          ctx.fillStyle = item.color || '#E2E8F0';
+          ctx.textAlign = 'center';
+          ctx.fillText(detailStr, pillX + rightPillW / 2, iconCy);
+        }
+
+        // Main Event Text (Truncated to fit remaining space)
+        const maxTextW = contentW - (textStartX - contentX) - (rightPillW > 0 ? rightPillW + 6 : 4);
         ctx.font = 'bold 9px "Segoe UI", sans-serif';
-        ctx.fillStyle = '#F1F5F9';
+        ctx.fillStyle = isLatest ? '#FFFFFF' : '#E2E8F0';
         ctx.textAlign = 'left';
-        ctx.fillText(displayName, nameX, rowY + rowH / 2);
+        const displayEventText = this.truncateText(ctx, item.text, maxTextW);
+        ctx.fillText(displayEventText, textStartX, iconCy);
 
-        // Strikethrough for eliminated
-        const textW = ctx.measureText(displayName).width;
-        ctx.strokeStyle = '#EF4444';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(nameX - 1, rowY + rowH / 2);
-        ctx.lineTo(nameX + textW + 1, rowY + rowH / 2);
-        ctx.stroke();
-
-        // OUT Badge
-        ctx.font = '900 8px Impact, "Arial Black", sans-serif';
-        ctx.fillStyle = '#EF4444';
-        ctx.textAlign = 'right';
-        ctx.fillText('OUT', contentX + contentW - 6, rowY + rowH / 2);
+        // Strikethrough if OUT
+        if (item.type === 'out') {
+          const textW = ctx.measureText(displayEventText).width;
+          ctx.strokeStyle = '#EF4444';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(textStartX - 1, iconCy);
+          ctx.lineTo(textStartX + textW + 1, iconCy);
+          ctx.stroke();
+        }
       }
     }
 

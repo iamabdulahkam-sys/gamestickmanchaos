@@ -153,6 +153,18 @@ export class BombManager {
 
         f.takeDamage(damage, { x: Math.cos(angle) * 8, y: -7 }, null, effects);
         f.stunTimer = 0.45;
+
+        const g = this.game || physics?.game;
+        if (g && f.country) {
+          g.addBattleEvent({
+            type: 'bomb',
+            icon: '💣',
+            country: f.country,
+            text: `${f.country.name} hit by Bomb! (-${damage} HP)`,
+            detail: `-${damage}`,
+            color: '#F97316',
+          });
+        }
       }
     }
   }

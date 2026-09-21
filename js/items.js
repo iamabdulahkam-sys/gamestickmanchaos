@@ -84,6 +84,26 @@ export class ItemManager {
           fighter.equipItem(item.config, effects);
           sound.playItemPickup();
 
+          let itemIcon = '🗡️';
+          if (item.config.id === 'glove') itemIcon = '🥊';
+          else if (item.config.id === 'hammer') itemIcon = '🔨';
+          else if (item.config.id === 'chili') itemIcon = '🌶️';
+          else if (item.config.id === 'star') itemIcon = '✨';
+          else if (item.config.id === 'laser') itemIcon = '🔫';
+          else if (item.config.id === 'missile') itemIcon = '🚀';
+
+          const g = this.game || physics?.game;
+          if (g && fighter.country) {
+            g.addBattleEvent({
+              type: 'item',
+              icon: itemIcon,
+              country: fighter.country,
+              text: `${fighter.country.name} got ${item.config.name}!`,
+              detail: 'ITEM',
+              color: item.config.color || '#00F0FF',
+            });
+          }
+
           if (effects) {
             effects.addHitEffect(item.x, item.y - 10, item.config.comicWord);
             effects.addShockwave(item.x, item.y, item.config.color, 50);
@@ -173,6 +193,18 @@ export class ItemManager {
           effects.addShockwave(op.x, op.y, '#00F0FF', 55);
         }
         other.takeDamage(laserDmg, { x: fighter.facing * kbForce, y: -kbForce * 0.4 }, fighter, effects);
+
+        const g = this.game || physics?.game;
+        if (g && other.country) {
+          g.addBattleEvent({
+            type: 'projectile',
+            icon: '🔫',
+            country: other.country,
+            text: `${other.country.name} hit by Laser! (-${laserDmg} HP)`,
+            detail: `-${laserDmg}`,
+            color: '#00F0FF',
+          });
+        }
       }
     }
 
@@ -254,6 +286,18 @@ export class ItemManager {
           shooter,
           effects
         );
+
+        const g = this.game || physics?.game;
+        if (g && f.country) {
+          g.addBattleEvent({
+            type: 'projectile',
+            icon: '🚀',
+            country: f.country,
+            text: `${f.country.name} hit by Rocket! (-${finalDamage} HP)`,
+            detail: `-${finalDamage}`,
+            color: '#F43F5E',
+          });
+        }
       }
     }
   }

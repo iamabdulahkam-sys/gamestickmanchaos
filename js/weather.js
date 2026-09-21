@@ -49,6 +49,25 @@ export class WeatherManager {
     this.windPhaseTimer = 4.0;
     this.lightningBolts = [];
     this.lightningTimer = 5.0;
+
+    let wName = '';
+    let wIcon = '☀️';
+    let wColor = '#94A3B8';
+    if (type === 'rain') { wName = 'Rainstorm'; wIcon = '🌧️'; wColor = '#38BDF8'; }
+    else if (type === 'wind') { wName = 'High Winds'; wIcon = '💨'; wColor = '#2DD4BF'; }
+    else if (type === 'lightning') { wName = 'Thunderstorm'; wIcon = '⚡'; wColor = '#FBBF24'; }
+    else if (type === 'chaos') { wName = 'Dynamic Chaos'; wIcon = '🌀'; wColor = '#F472B6'; }
+
+    const g = this.game;
+    if (g && wName) {
+      g.addBattleEvent({
+        type: 'weather',
+        icon: wIcon,
+        text: `Weather: ${wName}`,
+        detail: 'SHIFT',
+        color: wColor,
+      });
+    }
   }
 
   setWindStrength(key) {
@@ -322,6 +341,18 @@ export class WeatherManager {
             y: f.body.velocity.y * 0.2 + Math.sin(angle) * force - 5,
           });
           f.takeDamage(12, { x: Math.cos(angle) * 6, y: -6 }, null, effects);
+
+          const g = this.game || physics?.game;
+          if (g && f.country) {
+            g.addBattleEvent({
+              type: 'lightning',
+              icon: '⚡',
+              country: f.country,
+              text: `${f.country.name} struck by Lightning! (-12 HP)`,
+              detail: '-12 HP',
+              color: '#FBBF24',
+            });
+          }
         }
       }
     }
