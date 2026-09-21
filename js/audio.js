@@ -540,6 +540,35 @@ class SoundManager {
   }
 
   /**
+   * Cartoon Country Card Reveal Tick (crisp mechanical/card flip tick sound)
+   */
+  playCountryTick(index = 0, total = 64) {
+    this.ensureActive();
+    const master = this.createMasterGain();
+    if (!master) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    // Subtle rising pitch across reveal sequence (from 900Hz up to 1500Hz)
+    const ratio = total > 1 ? Math.min(1, index / total) : 0.5;
+    const baseFreq = 950 + ratio * 550;
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(baseFreq, t);
+    osc.frequency.exponentialRampToValueAtTime(320, t + 0.028);
+
+    gain.gain.setValueAtTime(0.32, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.028);
+
+    osc.connect(gain);
+    gain.connect(master);
+    osc.start(t);
+    osc.stop(t + 0.028);
+  }
+
+  /**
    * Cartoon Time Bomb Explosion (deep KABOOM blast with noise thud)
    */
   playKaboom() {

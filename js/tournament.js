@@ -309,9 +309,11 @@ export class TournamentManager {
     }
     this.game.fighters = [];
 
-    // Reset intro timer
+    // Reset intro timer & country reveal sequence
     this.introSecondsLeft = CONFIG.TOURNAMENT?.INTRO_DURATION_SECONDS || 10;
     this.isShowingIntro = true;
+    this.introElapsed = 0;
+    this.revealedCountriesCount = 0;
 
     // Inform UI to display intro modal
     this.game.ui.showTournamentIntro(stage, this.currentPool, this.stageConditions, this.introSecondsLeft);
@@ -553,11 +555,30 @@ export class TournamentManager {
 
     // 1. Stage Intro Showcase countdown
     if (this.isShowingIntro) {
+      this.introElapsed = (this.introElapsed || 0) + dt;
+      const count = this.currentPool?.length || 0;
+
+      // Sequential country reveal: reveal all countries with sound effect detik as each appears
+      const totalRevealDuration = Math.min(2.4, Math.max(0.7, count * 0.036));
+      const revealInterval = count > 0 ? totalRevealDuration / count : 0.036;
+      const targetRevealed = Math.min(count, Math.floor(this.introElapsed / revealInterval));
+
+      if (targetRevealed > (this.revealedCountriesCount || 0)) {
+        const nextCount = Math.min(count, (this.revealedCountriesCount || 0) + Math.min(4, targetRevealed - (this.revealedCountriesCount || 0)));
+        for (let i = (this.revealedCountriesCount || 0); i < nextCount; i++) {
+          sound.playCountryTick(i, count);
+        }
+        this.revealedCountriesCount = nextCount;
+      }
+
       const prevSec = Math.ceil(this.introSecondsLeft);
       this.introSecondsLeft -= dt;
       const curSec = Math.max(0, Math.ceil(this.introSecondsLeft));
       if (curSec !== prevSec) {
         this.game.ui.updateTournamentIntroTimer(curSec);
+        if (curSec > 0 && curSec < 10) {
+          sound.playTick(false);
+        }
       }
       if (this.introSecondsLeft <= 0) {
         this.isShowingIntro = false;

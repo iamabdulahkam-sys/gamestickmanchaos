@@ -1555,18 +1555,21 @@ export class CanvasHUD {
 
     // 6. Participating Countries Grid
     const countries = tournament.currentPool || [];
+    const count = countries.length;
+    const revealed = tournament.revealedCountriesCount !== undefined ? tournament.revealedCountriesCount : count;
+
     ctx.font = '900 12.5px Impact, "Arial Black", sans-serif';
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(`PARTICIPATING COUNTRIES (${countries.length}):`, cardX + 24, cardY + 210);
+    const revealedCountStr = revealed < count ? `${revealed}/${count}` : `${count}`;
+    ctx.fillText(`PARTICIPATING COUNTRIES (${revealedCountStr}):`, cardX + 24, cardY + 210);
 
     const gridX = cardX + 24;
     const gridY = cardY + 230;
     const gridW = cardW - 48;
     const gridH = cardH - 245;
 
-    const count = countries.length;
     let cols = 4;
     if (count > 32) cols = 6;
     else if (count <= 8) cols = 4;
@@ -1585,13 +1588,27 @@ export class CanvasHUD {
       const px = gridX + col * (colW + gapX);
       const py = gridY + row * (rowH + gapY);
 
+      if (i >= revealed) {
+        // Placeholder slot waiting to be revealed
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+        ctx.beginPath();
+        this.roundRect(ctx, px, py, colW, rowH, 6);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        continue;
+      }
+
+      const isJustRevealed = (i === revealed - 1 && revealed < count);
+
       // Card background
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.fillStyle = isJustRevealed ? 'rgba(0, 240, 255, 0.16)' : 'rgba(255, 255, 255, 0.05)';
       ctx.beginPath();
       this.roundRect(ctx, px, py, colW, rowH, 6);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = isJustRevealed ? '#00F0FF' : 'rgba(255, 255, 255, 0.12)';
+      ctx.lineWidth = isJustRevealed ? 1.5 : 1;
       ctx.stroke();
 
       // Flag
