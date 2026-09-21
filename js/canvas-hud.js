@@ -132,12 +132,12 @@ export class CanvasHUD {
     const width = 1280;
     const height = 720;
     const cardW = 280;
-    const cardH = 310;
-    const cardX = width - cardW - 28;
-    const cardY = height / 2 - cardH / 2;
+    const cardH = 320;
+    const cardX = width - cardW - 24;
+    const cardY = (height - cardH) / 2;
 
     const btnPlayX = cardX + 18;
-    const btnPlayY = cardY + 204;
+    const btnPlayY = cardY + 206;
     const btnPlayW = cardW - 36;
     const btnPlayH = 38;
 
@@ -152,7 +152,7 @@ export class CanvasHUD {
     }
 
     const btnRosterX = cardX + 18;
-    const btnRosterY = cardY + 252;
+    const btnRosterY = cardY + 256;
     const btnRosterW = cardW - 36;
     const btnRosterH = 34;
 
@@ -162,7 +162,7 @@ export class CanvasHUD {
       canvasY >= btnRosterY &&
       canvasY <= btnRosterY + btnRosterH
     ) {
-      game.ui.openSettings();
+      game.ui?.openSettings();
       return true;
     }
 
@@ -1093,11 +1093,14 @@ export class CanvasHUD {
   // 4. CHAMPION VICTORY CARD (MATCH & TOURNAMENT WINNER)
   // ==========================================================================
   drawChampionCard(ctx, width, height, champion, game) {
-    // Docked on the right side outside the center arena (matching user's screenshot layout)
+    if (!champion) return;
+    this.interactiveButtons = [];
+
+    // Docked cleanly on the right side outside the center arena (fully inside 1280x720 canvas)
     const cardW = 280;
-    const cardH = 310;
-    const cardX = width - cardW - 28;
-    const cardY = height / 2 - cardH / 2;
+    const cardH = 320;
+    const cardX = width - cardW - 24;
+    const cardY = (height - cardH) / 2;
 
     ctx.save();
 
@@ -1128,11 +1131,12 @@ export class CanvasHUD {
     ctx.textBaseline = 'top';
     ctx.fillText('CHAMPION!', trophyCx, cardY + 52);
 
-    // 5. Large Country Flag of Winner
+    // 5. Large Country Flag of Winner (Supports Fighter, Country object, or Standings entry)
+    const country = champion.country || (champion.id ? champion : null) || (typeof champion === 'string' ? { id: champion, name: champion } : champion);
     const flagRadius = 26;
     const flagCy = cardY + 114;
-    if (champion.country) {
-      Flags.drawFlagHead(ctx, champion.country, trophyCx, flagCy, flagRadius);
+    if (country && (country.id || country.name)) {
+      Flags.drawFlagHead(ctx, country, trophyCx, flagCy, flagRadius);
       // Gold circular ring around flag
       ctx.strokeStyle = '#FFD700';
       ctx.lineWidth = 2.5;
@@ -1141,27 +1145,42 @@ export class CanvasHUD {
       ctx.stroke();
     }
 
-    // 6. Winner's Country Name in large bold typography
-    const countryName = (champion.country?.name || champion.name || 'CHAMPION').toUpperCase();
-    ctx.font = '900 18px "Segoe UI", sans-serif';
+    // 6. Winner's Country Name in bold typography with auto-downscaling to strictly prevent canvas overflow
+    let countryName = (champion.country?.name || champion.name || country?.name || 'CHAMPION').toUpperCase();
+    const maxNameW = cardW - 36; // 244px available inside card
+    let nameFontSize = 18;
+    ctx.font = `900 ${nameFontSize}px "Segoe UI", sans-serif`;
+    while (nameFontSize > 11 && ctx.measureText(countryName).width > maxNameW) {
+      nameFontSize -= 1;
+      ctx.font = `900 ${nameFontSize}px "Segoe UI", sans-serif`;
+    }
+    const safeCountryName = this.truncateText(ctx, countryName, maxNameW);
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(countryName, trophyCx, cardY + 148);
+    ctx.fillText(safeCountryName, trophyCx, cardY + 148);
 
-    // 7. Stats Subtitle
-    const kills = champion.kills || 0;
-    const finalHp = Math.max(0, Math.ceil(champion.hp || 0));
+    // 7. Stats Subtitle with fallback to standings lookup
+    let kills = champion.kills || 0;
+    let finalHp = Math.max(0, Math.ceil(champion.hp || 0));
+    if ((!champion.kills || !champion.hp) && game?.getStandings) {
+      const standings = game.getStandings();
+      const cid = country?.id || champion.id;
+      const entry = standings.find((s) => (s.country?.id || s.id) === cid);
+      if (entry) {
+        if (kills === 0 && entry.kills) kills = entry.kills;
+        if (finalHp === 0 && entry.hp) finalHp = Math.max(0, Math.ceil(entry.hp));
+      }
+    }
     const subtitle = `SURVIVOR  •  ${kills} KILLS  •  ${finalHp} HP`;
-
     ctx.font = 'bold 10.5px "Segoe UI", sans-serif';
     ctx.fillStyle = '#FFD700';
-    ctx.fillText(subtitle, trophyCx, cardY + 174);
+    ctx.fillText(this.truncateText(ctx, subtitle, maxNameW), trophyCx, cardY + 174);
 
-    // 8. Action Buttons (Rendered in Canvas for video recording)
+    // 8. Action Buttons (Rendered in Canvas for video recording & interactive clicks)
     // 8a. "PLAY AGAIN" Button (Cyan)
     const btnPlayX = cardX + 18;
-    const btnPlayY = cardY + 204;
+    const btnPlayY = cardY + 206;
     const btnPlayW = cardW - 36;
     const btnPlayH = 38;
 
@@ -1176,9 +1195,17 @@ export class CanvasHUD {
     ctx.textBaseline = 'middle';
     ctx.fillText('PLAY AGAIN', btnPlayX + btnPlayW / 2, btnPlayY + btnPlayH / 2);
 
+    this.interactiveButtons.push({
+      x: btnPlayX,
+      y: btnPlayY,
+      w: btnPlayW,
+      h: btnPlayH,
+      onClick: () => game.restartMatch(),
+    });
+
     // 8b. "ROSTER / SETTINGS" Button (Dark Glass)
     const btnRosterX = cardX + 18;
-    const btnRosterY = cardY + 252;
+    const btnRosterY = cardY + 256;
     const btnRosterW = cardW - 36;
     const btnRosterH = 34;
 
@@ -1196,6 +1223,14 @@ export class CanvasHUD {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('ROSTER / SETTINGS', btnRosterX + btnRosterW / 2, btnRosterY + btnRosterH / 2);
+
+    this.interactiveButtons.push({
+      x: btnRosterX,
+      y: btnRosterY,
+      w: btnRosterW,
+      h: btnRosterH,
+      onClick: () => game.ui?.openSettings(),
+    });
 
     ctx.restore();
   }
@@ -1911,10 +1946,19 @@ export class CanvasHUD {
       this.roundRect(ctx, fx, fy, flagW, flagH, 6);
       ctx.stroke();
 
-      const champName = (country.name || 'CHAMPION').toUpperCase();
-      ctx.font = '900 28px Impact, "Arial Black", sans-serif';
+      let champName = (country.name || 'CHAMPION').toUpperCase();
+      const maxChampNameW = cardW - 60;
+      let champFontSize = 28;
+      ctx.font = `900 ${champFontSize}px Impact, "Arial Black", sans-serif`;
+      while (champFontSize > 16 && ctx.measureText(champName).width > maxChampNameW) {
+        champFontSize -= 2;
+        ctx.font = `900 ${champFontSize}px Impact, "Arial Black", sans-serif`;
+      }
+      const safeChampName = this.truncateText(ctx, champName, maxChampNameW);
       ctx.fillStyle = '#FFFFFF';
-      ctx.fillText(champName, trophyCx, cardY + 215);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(safeChampName, trophyCx, cardY + 215);
 
       // Crown badge
       const badgeText = 'TOURNAMENT CHAMPION';
@@ -1933,12 +1977,15 @@ export class CanvasHUD {
       ctx.stroke();
 
       ctx.fillStyle = '#FFD700';
+      ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(badgeText, trophyCx, bY + bH / 2);
 
       // Congratulatory subtext
       ctx.font = '600 13px "Segoe UI", sans-serif';
       ctx.fillStyle = '#CBD5E1';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillText('Congratulations! Conquered all obstacles and defeated 64 competing nations!', trophyCx, cardY + 315);
     }
 

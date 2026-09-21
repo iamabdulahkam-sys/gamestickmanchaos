@@ -1108,10 +1108,17 @@ export class UIManager {
   }
 
   /**
-   * Displays Winner screen celebration (docked outside arena)
+   * Displays Winner screen celebration.
+   * When Canvas HUD is active (default), Champion Card is rendered directly onto the HTML5 Canvas
+   * (drawChampionCard) to ensure 100% video recording capture in 4K NVENC and zero out-of-canvas HTML overlay overflow.
    */
   showWinner(winnerFighter) {
-    if (!this.winnerModal) return;
+    if (this.game?.renderer?.hud?.enabled) {
+      if (this.winnerModal) this.winnerModal.classList.remove('active');
+      return;
+    }
+
+    if (!this.winnerModal || !winnerFighter) return;
 
     const flagContainer = document.getElementById('winner-flag');
     const nameEl = document.getElementById('winner-name');
@@ -1123,14 +1130,17 @@ export class UIManager {
     if (winnerCard) winnerCard.style.display = 'block';
     if (winnerChip) winnerChip.style.display = 'none';
 
-    if (flagContainer && winnerFighter) {
-      flagContainer.innerHTML = Flags.getFlagSvg(winnerFighter.country.id);
+    const countryId = winnerFighter.country?.id || winnerFighter.id;
+    const countryName = winnerFighter.country?.name || winnerFighter.name || 'Champion';
+
+    if (flagContainer && countryId && typeof Flags !== 'undefined') {
+      flagContainer.innerHTML = Flags.getFlagSvg(countryId);
     }
-    if (nameEl && winnerFighter) {
-      nameEl.textContent = winnerFighter.name.toUpperCase();
+    if (nameEl) {
+      nameEl.textContent = countryName.toUpperCase();
     }
-    if (chipNameEl && winnerFighter) {
-      chipNameEl.textContent = `${winnerFighter.name.toUpperCase()} WINS!`;
+    if (chipNameEl) {
+      chipNameEl.textContent = `${countryName.toUpperCase()} WINS!`;
     }
 
     this.winnerModal.classList.add('active');
